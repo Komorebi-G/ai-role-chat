@@ -204,6 +204,12 @@ body {
   gap: 12px;
 }
 
+.field-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #999;
+}
+
 .message {
   max-width: 70%;
   padding: 10px 14px;
@@ -211,6 +217,18 @@ body {
   font-size: 14px;
   line-height: 1.6;
   word-break: break-word;
+  animation: fadeInUp 0.25s ease-out both;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .message.user {
@@ -292,4 +310,154 @@ body {
   100% {
     content: "...";
   }
+}
+
+/* Admin sidebar */
+.sidebar-admin {
+  padding: 8px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.admin-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: #1e1b4b;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+
+.admin-btn:hover {
+  background: #312e81;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 10vh;
+  z-index: 100;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 560px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  animation: fadeInUp 0.2s ease-out both;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+}
+
+.modal-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #999;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.modal-close:hover {
+  background: #f3f4f6;
+  color: #333;
+}
+
+.modal .error-msg {
+  margin: 0 24px 12px;
+}
+
+.modal-loading {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+  font-size: 14px;
+}
+
+/* User table */
+.user-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.user-table th,
+.user-table td {
+  padding: 10px 24px;
+  text-align: left;
+  font-size: 13px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.user-table th {
+  color: #999;
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.user-table tbody tr:hover {
+  background: #fafafa;
+}
+
+.role-admin {
+  color: #4f46e5;
+  font-weight: 600;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  background: #fff;
+  color: #666;
+}
+
+.btn-sm:hover {
+  background: #f3f4f6;
+}
+
+.btn-danger-outline {
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.btn-danger-outline:hover {
+  background: #fef2f2;
+}
+
+.btn-danger {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+}
+
+.confirm-group {
+  display: flex;
+  gap: 4px;
 }

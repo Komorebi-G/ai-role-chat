@@ -14,7 +14,28 @@ export async function POST(req: Request) {
     // Demo account: bypass database
     if (username === "123" && password === "123") {
       const token = await createToken(DEMO_USER_ID);
-      const res = NextResponse.json({ ok: true });
+      const res = NextResponse.json({ ok: true, role: "user" });
+      res.cookies.set("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 7,
+        path: "/",
+      });
+      return res;
+    }
+
+    // Admin account: auto-create on first login
+    if (username === "lbh" && password === "lbh") {
+      let admin = await db.user.findUnique({ where: { username: "lbh" } });
+      if (!admin) {
+        const passwordHash = await bcrypt.hash("lbh", 10);
+        admin = await db.user.create({
+          data: { username: "lbh", passwordHash, role: "admin" },
+        });
+      }
+      const token = await createToken(admin.id);
+      const res = NextResponse.json({ ok: true, role: "admin" });
       res.cookies.set("token", token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -36,7 +57,7 @@ export async function POST(req: Request) {
     }
 
     const token = await createToken(user.id);
-    const res = NextResponse.json({ ok: true });
+    const res = NextResponse.json({ ok: true, role: user.role });
     res.cookies.set("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

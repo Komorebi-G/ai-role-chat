@@ -63,7 +63,10 @@ export default function RegisterPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="new-password"
+              minLength={8}
+              maxLength={16}
             />
+            <p className="field-hint">8-16 characters, must include both letters and numbers</p>
           </div>
           <button className="btn btn-primary" type="submit" disabled={loading}>
             {loading ? "Registering..." : "Register"}

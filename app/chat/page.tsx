@@ -17,6 +17,13 @@ interface Message {
   createdAt: string;
 }
 
+interface AdminUser {
+  id: string;
+  username: string;
+  role: string;
+  createdAt: string;
+}
+
 export default function ChatPage() {
   const router = useRouter();
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -26,6 +33,12 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [unauthorized, setUnauthorized] = useState(false);
+  const [role, setRole] = useState<string>("user");
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const messagesEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,6 +54,15 @@ export default function ChatPage() {
         if (Array.isArray(data)) setCharacters(data);
       })
       .catch(() => setUnauthorized(true));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.role) setRole(data.role);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -127,6 +149,41 @@ export default function ChatPage() {
     router.push("/login");
   }
 
+  async function loadAdminUsers() {
+    setAdminLoading(true);
+    setAdminError("");
+    try {
+      const res = await fetch("/api/admin/users");
+      if (!res.ok) throw new Error("Failed to load users");
+      const data = await res.json();
+      setAdminUsers(data);
+    } catch {
+      setAdminError("Failed to load users");
+    } finally {
+      setAdminLoading(false);
+    }
+  }
+
+  async function handleDeleteUser(userId: string) {
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        setAdminError(data.error || "Delete failed");
+        return;
+      }
+      setAdminUsers((prev) => prev.filter((u) => u.id !== userId));
+      setDeleteConfirm(null);
+    } catch {
+      setAdminError("Network error");
+    }
+  }
+
+  function openAdmin() {
+    setShowAdmin(true);
+    loadAdminUsers();
+  }
+
   if (unauthorized) return null;
 
   return (
@@ -151,6 +208,13 @@ export default function ChatPage() {
             </div>
           ))}
         </div>
+        {role === "admin" && (
+          <div className="sidebar-admin">
+            <button className="admin-btn" onClick={openAdmin}>
+              User Management
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* Main chat area */}
@@ -189,6 +253,58 @@ export default function ChatPage() {
           <div className="placeholder">Select a character to start chatting</div>
         )}
       </main>
+
+      {/* Admin modal */}
+      {showAdmin && (
+        <div className="modal-overlay" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>User Management</h2>
+              <button className="modal-close" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>X</button>
+            </div>
+            {adminError && <div className="error-msg">{adminError}</div>}
+            {adminLoading ? (
+              <p className="modal-loading">Loading...</p>
+            ) : (
+              <table className="user-table">
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Registered</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminUsers.map((u) => (
+                    <tr key={u.id}>
+                      <td>{u.username}</td>
+                      <td className={`role-${u.role}`}>{u.role}</td>
+                      <td>{new Date(u.createdAt).toLocaleDateString()}</td>
+                      <td>
+                        {deleteConfirm === u.id ? (
+                          <span className="confirm-group">
+                            <button className="btn-sm btn-danger" onClick={() => handleDeleteUser(u.id)}>Confirm</button>
+                            <button className="btn-sm" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+                          </span>
+                        ) : (
+                          <button
+                            className="btn-sm btn-danger-outline"
+                            onClick={() => setDeleteConfirm(u.id)}
+                            disabled={u.id === "demo"}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
