@@ -24,8 +24,8 @@ export async function aiChat(messages: ChatMessage[]): Promise<string> {
   try {
     const reply = await chatWithDeepSeek(messages, controller.signal);
     return reply;
-  } catch (err: any) {
-    if (err.name === "AbortError") {
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === "AbortError") {
       throw new Error("AI request timed out");
     }
     throw err;

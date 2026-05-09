@@ -3,12 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-interface Character {
-  id: string;
-  name: string;
-  description: string;
-}
-
 export default function HomePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
