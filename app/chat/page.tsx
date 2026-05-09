@@ -61,6 +61,13 @@ export default function ChatPage() {
   const [clearLoading, setClearLoading] = useState(false);
   const [settings, setSettings] = useState<ChatSettings>(loadSettings);
   const [showSettings, setShowSettings] = useState(false);
+  const [showCreateChar, setShowCreateChar] = useState(false);
+  const [charForm, setCharForm] = useState({
+    id: "", name: "", description: "", personality: "", scenario: "",
+    first_mes: "", mes_example: "", system_prompt: "",
+  });
+  const [charCreating, setCharCreating] = useState(false);
+  const [charError, setCharError] = useState("");
   const messagesEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -240,6 +247,40 @@ export default function ChatPage() {
     }
   }
 
+  async function handleCreateChar(e: React.FormEvent) {
+    e.preventDefault();
+    if (!charForm.id || !charForm.name) {
+      setCharError("ID and Name are required");
+      return;
+    }
+    setCharCreating(true);
+    setCharError("");
+    try {
+      const res = await fetch("/api/characters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(charForm),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCharError(data.error || "Create failed");
+        return;
+      }
+      // Reload character list
+      const refresh = await fetch("/api/characters");
+      if (refresh.ok) {
+        const list = await refresh.json();
+        if (Array.isArray(list)) setCharacters(list);
+      }
+      setShowCreateChar(false);
+      setCharForm({ id: "", name: "", description: "", personality: "", scenario: "", first_mes: "", mes_example: "", system_prompt: "" });
+    } catch {
+      setCharError("Network error");
+    } finally {
+      setCharCreating(false);
+    }
+  }
+
   function openAdmin() {
     setShowAdmin(true);
     loadAdminUsers();
@@ -276,6 +317,9 @@ export default function ChatPage() {
         </div>
         {role === "admin" && (
           <div className="sidebar-admin">
+            <button className="admin-btn" onClick={() => setShowCreateChar(true)}>
+              + Create Character
+            </button>
             <button className="admin-btn" onClick={openAdmin}>
               User Management
             </button>
@@ -328,6 +372,72 @@ export default function ChatPage() {
           <div className="placeholder">Select a character to start chatting</div>
         )}
       </main>
+
+      {/* Create Character modal */}
+      {showCreateChar && (
+        <div className="modal-overlay" onClick={() => setShowCreateChar(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Create Character</h2>
+              <button className="modal-close" onClick={() => setShowCreateChar(false)}>X</button>
+            </div>
+            {charError && <div className="error-msg">{charError}</div>}
+            <form className="settings-body" onSubmit={handleCreateChar}>
+              <div className="settings-field">
+                <label>ID *</label>
+                <input className="form-input" value={charForm.id}
+                  onChange={(e) => setCharForm((f) => ({ ...f, id: e.target.value }))}
+                  placeholder="alice" required />
+              </div>
+              <div className="settings-field">
+                <label>Name *</label>
+                <input className="form-input" value={charForm.name}
+                  onChange={(e) => setCharForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="Alice" required />
+              </div>
+              <div className="settings-field">
+                <label>Description</label>
+                <textarea className="form-textarea" rows={2} value={charForm.description}
+                  onChange={(e) => setCharForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="A brief description of the character" />
+              </div>
+              <div className="settings-field">
+                <label>Personality</label>
+                <textarea className="form-textarea" rows={2} value={charForm.personality}
+                  onChange={(e) => setCharForm((f) => ({ ...f, personality: e.target.value }))}
+                  placeholder="Personality traits" />
+              </div>
+              <div className="settings-field">
+                <label>Scenario</label>
+                <textarea className="form-textarea" rows={2} value={charForm.scenario}
+                  onChange={(e) => setCharForm((f) => ({ ...f, scenario: e.target.value }))}
+                  placeholder="Conversation scenario" />
+              </div>
+              <div className="settings-field">
+                <label>First Message</label>
+                <textarea className="form-textarea" rows={2} value={charForm.first_mes}
+                  onChange={(e) => setCharForm((f) => ({ ...f, first_mes: e.target.value }))}
+                  placeholder="Opening message" />
+              </div>
+              <div className="settings-field">
+                <label>Example Dialogue</label>
+                <textarea className="form-textarea" rows={2} value={charForm.mes_example}
+                  onChange={(e) => setCharForm((f) => ({ ...f, mes_example: e.target.value }))}
+                  placeholder="User: ...&#10;Character: ..." />
+              </div>
+              <div className="settings-field">
+                <label>System Prompt</label>
+                <textarea className="form-textarea" rows={2} value={charForm.system_prompt}
+                  onChange={(e) => setCharForm((f) => ({ ...f, system_prompt: e.target.value }))}
+                  placeholder="Custom system instructions" />
+              </div>
+              <button className="btn btn-primary" type="submit" disabled={charCreating}>
+                {charCreating ? "Creating..." : "Create Character"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Settings modal */}
       {showSettings && (

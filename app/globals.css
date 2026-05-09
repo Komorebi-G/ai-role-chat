@@ -541,6 +541,28 @@ body {
   margin-top: 4px;
 }
 
+.form-input,
+.form-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus,
+.form-textarea:focus {
+  border-color: #4f46e5;
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 36px;
+}
+
 /* Markdown message content */
 .message p {
   margin: 0;

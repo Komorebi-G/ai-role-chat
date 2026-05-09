@@ -44,7 +44,11 @@ function normalizeCharacter(raw: Record<string, unknown>, file: string): Charact
   };
 }
 
-const characters = readJsonFiles(charactersDir);
+let characters = readJsonFiles(charactersDir);
+
+export function reloadCharacters(): void {
+  characters = readJsonFiles(charactersDir);
+}
 
 const FALLBACK_CHARACTER: Character = {
   id: "default",
