@@ -1,32 +1,30 @@
 # TODO — AI Role Chat
 
-## 2026-05-10: Conversation table 错误修复（第二次分析）
+## 2026-05-10: Turso 云端缺少 Conversation 表 ✅
 
-**问题**: 发送消息时仍然报 `no such table: main.Conversation`
+**问题**: `no such table: main.Conversation` 反复出现。
 
-**排查过程**:
-1. 确认数据库表 `Conversation` 存在（sqlite3 验证 schema 正确）
-2. 确认迁移全部应用（3 migrations, Database schema is up to date）
-3. curl 直接测试 API — 返回 500，错误信息为 `Cannot find module './331.js'`
-4. 根因定位: **`.next` 构建缓存损坏** — webpack chunk manifest 引用了不存在的模块 `./331.js`
-
-**为什么表现为 "no such table" 而不是 "Cannot find module"？**
-- Next.js 500 错误页面的内容被前端作为 API 响应解析
-- 旧 dev server 进程持有的 `.next` 缓存是在 schema 变更前生成的，其中 Prisma client 编译产物已过时
-- webpack HMR 在文件变更后增量编译时产生了不一致的 chunk 引用
+**根因分析**:
+- 本地 SQLite (`prisma/dev.db`) — 迁移已应用，表存在 ✅
+- Turso 云端（Vercel 生产环境）— 迁移从未应用，Conversation 表不存在 ❌
+- 之前两次修复只处理了本地，没碰 Turso
 
 **修复**:
-1. 杀掉 dev server
-2. 删除整个 `.next` 目录（清除所有构建缓存）
-3. 重新生成 Prisma client (`npx prisma generate`)
-4. 创建 `.env` 文件（含 `DATABASE_URL`，确保 Prisma CLI 正常工作）
-5. 重启 dev server
+1. 创建 `scripts/migrate-turso.mjs` — 在 Vercel 构建时自动检查并应用缺失的迁移
+   - 检查 Turso 环境变量是否设置（未设置则跳过，本地开发不影响）
+   - 创建 `_prisma_migrations` 表（如不存在）
+   - 检查 `20260509150453_add_conversations` 迁移是否已应用
+   - 未应用则执行迁移 SQL（`executeMultiple` 批量执行）
+   - 记录迁移到 `_prisma_migrations`
+2. 更新 `package.json` build 脚本：`node scripts/migrate-turso.mjs && next build`
+3. ESLint flat config 排除 `scripts/` 目录
 
-**验证结果**:
-- curl: 登录 → GET /api/chat (findFirst) → POST /api/chat (create) → GET /api/conversations → 全部 200 ✅
-- typecheck: 无错误 ✅
-- lint: 无错误 ✅
-- test: 14 tests passed ✅
+**Vercel 构建流程**: `npm run build` → 自动检测 Turso 环境变量 → 应用缺失迁移 → 构建 Next.js
+
+**验证**:
+- 本地运行 `node scripts/migrate-turso.mjs` → 正确跳过（无 Turso 环境变量）
+- `npm run build` → 成功
+- typecheck, lint, test → 全部通过 ✅
 
 ---
 

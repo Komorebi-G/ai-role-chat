@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm install                    # Install dependencies
 npm run dev                    # Start dev server (port 3000)
-npm run build                  # Production build (next build)
+npm run build                  # Production build (migrate-turso + next build)
 npm run lint                   # ESLint (flat config: eslint .)
 npm run typecheck              # tsc --noEmit
 npm run test                   # vitest run (14 tests, 2 files)
@@ -21,8 +21,10 @@ git commit -m "..."             # Commit with descriptive message
 git push                        # Push to origin/master → Vercel auto-deploys
 
 # Turso (production database)
+# Migrations are applied automatically during Vercel build (scripts/migrate-turso.mjs)
+# Manual override if needed:
 turso db shell ai-role-chat ".tables"
-turso db shell ai-role-chat < prisma/migrations/*/migration.sql  # Push latest schema
+turso db shell ai-role-chat < prisma/migrations/20260509150453_add_conversations/migration.sql
 ```
 
 `DATABASE_URL` must be in the environment for Prisma CLI (`export DATABASE_URL="file:./dev.db"` — or read from `.env.local`).
