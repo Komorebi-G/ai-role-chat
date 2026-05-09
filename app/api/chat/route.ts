@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { requireAuth, DEMO_USER_ID } from "@/lib/auth";
 import { getCharacter } from "@/lib/character";
 import { aiChat } from "@/lib/ai";
-import { ChatMessage } from "@/lib/deepseek";
+import { buildPrompt } from "@/lib/prompt/buildPrompt";
+import { trimHistory } from "@/lib/chat/context";
 import { db } from "@/lib/db";
 
 // In-memory store for demo user (no database)
@@ -62,50 +63,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Character not found" }, { status: 404 });
     }
 
-    // Build system prompt from character card
-    const systemPrompt = [
-      `你是 ${character.name}。`,
-      character.description,
-      `性格：${character.personality}`,
-      `场景：${character.scenario}`,
-      "请用中文回复。保持角色一致性，不要跳出角色设定。",
-    ].join("\n");
-
-    let history: { role: string; content: string }[];
+    // Save user message, then load and trim history
+    let history: { role: "user" | "assistant"; content: string }[];
 
     if (userId === DEMO_USER_ID) {
-      // Save user message in memory
       demoMessages.push({
         id: crypto.randomUUID(),
         role: "user",
         content: message,
         createdAt: new Date().toISOString(),
       });
-
-      history = demoMessages.slice(-20);
+      history = demoMessages.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
     } else {
       await db.message.create({
         data: { userId, characterId, role: "user", content: message },
       });
-
       const rows = await db.message.findMany({
         where: { userId, characterId },
         orderBy: { createdAt: "asc" },
-        take: 20,
       });
-      history = rows.map((h) => ({ role: h.role, content: h.content }));
+      history = rows.map((r) => ({
+        role: r.role as "user" | "assistant",
+        content: r.content,
+      }));
     }
 
-    const messages: ChatMessage[] = [
-      { role: "system", content: systemPrompt },
-      ...history.map((h) => ({
-        role: h.role as "user" | "assistant",
-        content: h.content,
-      })),
-    ];
+    // Trim history to fit context window, then build prompt
+    const trimmedHistory = trimHistory(history);
+    const messages = buildPrompt(character, trimmedHistory, "");
 
     const reply = await aiChat(messages);
 
+    // Save assistant reply
     if (userId === DEMO_USER_ID) {
       demoMessages.push({
         id: crypto.randomUUID(),

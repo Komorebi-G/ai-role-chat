@@ -53,16 +53,34 @@ The chat page frontend (`app/chat/page.tsx`) fetches `/api/auth/me` to get the c
 ### AI pipeline
 
 ```
-app/api/chat/ → lib/ai.ts → lib/deepseek.ts → api.deepseek.com/v1/chat/completions
+app/api/chat/ → lib/prompt/buildPrompt.ts → lib/chat/context.ts → lib/ai.ts → lib/deepseek.ts → api.deepseek.com/v1/chat/completions
 ```
 
-- `lib/deepseek.ts`: raw fetch to DeepSeek API (model: `deepseek-v4-flash`, temp 0.8, max_tokens 1024). Takes optional `AbortSignal`.
-- `lib/ai.ts`: wraps DeepSeek with in-memory rate limiting (30 req/min sliding window) and a 30-second `AbortController` timeout. Throw errors on rate limit or timeout.
-- The chat route builds a system prompt from the character card JSON (name, description, personality, scenario) and sends the last 20 messages as conversation history.
+- `lib/deepseek.ts`: raw fetch to DeepSeek API (model: `deepseek-v4-flash`, temp 0.8, max_tokens 1024). Takes optional `AbortSignal`. Exports `ChatMessage` interface.
+- `lib/ai.ts`: wraps DeepSeek with in-memory rate limiting (30 req/min sliding window) and a 30-second `AbortController` timeout.
+- `lib/prompt/buildPrompt.ts`: assembles final messages array in layers — system prompt (global rules + character system_prompt) → character card info → example dialogue (parsed from `mes_example`) → trimmed chat history → user input. All output as `ChatMessage[]` format.
+- `lib/chat/context.ts`: trims history to fit context window budget (default 20 messages / 8000 chars). FIFO strategy — oldest messages discarded first. Uses character-count estimation (TODO: proper tokenizer).
+
+The old inline system prompt (Chinese string join in the chat route) is replaced by `buildPrompt()`. The old `take: 20` is replaced by `trimHistory()`.
 
 ### Characters
 
-Static JSON files in `characters/`. Loaded synchronously with `fs.readFileSync`. Schema defined in `lib/character.ts` (`Character` interface): id, name, description, personality, scenario, firstMessage. `firstMessage` is defined but not yet used in the chat route.
+Static JSON files in `characters/`. Schema defined in `lib/character.ts`:
+
+| Field | Required | Notes |
+|---|---|---|
+| `id` | Yes | Unique identifier |
+| `name` | Yes | Display name |
+| `description` | No | Role description, defaults to `""` |
+| `personality` | No | Personality traits, defaults to `""` |
+| `scenario` | No | Conversation scenario, defaults to `""` |
+| `first_mes` | No | Opening message (alias: `firstMessage`, preferred: `first_mes`) |
+| `mes_example` | No | Example dialogue lines, `"Speaker: content"` format |
+| `system_prompt` | No | Character-specific system prompt |
+| `creator_notes` | No | Author notes (unused in prompt) |
+| `tags` | No | String array (unused in prompt) |
+
+`normalizeCharacter()` handles all field fallbacks. Missing fields never crash — they default to empty strings. `getAllCharacters()` returns a built-in fallback character if the `characters/` directory is empty/missing.
 
 ### Frontend routing
 

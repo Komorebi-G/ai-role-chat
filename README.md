@@ -40,9 +40,16 @@ npm run dev
   "description": "角色描述",
   "personality": "性格设定",
   "scenario": "对话场景",
-  "firstMessage": "角色第一句话"
+  "first_mes": "开场白（首次进入时显示）",
+  "mes_example": "用户：示例对话\n角色：示例回复",
+  "system_prompt": "角色专属系统提示词",
+  "creator_notes": "作者备注（可选）",
+  "tags": ["标签1", "标签2"]
 }
 ```
+
+必填字段：`id`、`name`。其他字段缺失时使用空值 fallback，不会崩溃。
+`first_mes` 和 `firstMessage` 均可使用（优先 `first_mes`）。
 
 ## 目录结构
 
@@ -60,11 +67,15 @@ ai-role-chat/
 │   └── page.tsx          # 首页（自动跳转）
 ├── characters/           # 角色卡 JSON 文件
 ├── lib/                  # 工具库
-│   ├── db.ts             # Prisma 客户端
+│   ├── db.ts             # Prisma 客户端（SQLite/Turso 双模式）
 │   ├── auth.ts           # JWT 认证
-│   ├── character.ts      # 角色加载
+│   ├── character.ts      # 角色卡加载与 fallback
 │   ├── deepseek.ts       # DeepSeek API 调用
-│   └── ai.ts             # AI 请求封装（超时/限流）
+│   ├── ai.ts             # AI 请求封装（超时/限流）
+│   ├── prompt/
+│   │   └── buildPrompt.ts  # 分层 Prompt 构建（SillyTavern 风格）
+│   └── chat/
+│       └── context.ts    # 上下文裁剪（FIFO + 字符预算估算）
 ├── prisma/               # 数据库 Schema
 └── .env.example          # 环境变量示例
 ```

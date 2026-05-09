@@ -83,7 +83,20 @@ export default function ChatPage() {
         return res.json();
       })
       .then((data) => {
-        if (Array.isArray(data)) setMessages(data);
+        if (Array.isArray(data)) {
+          if (data.length === 0 && selectedChar.firstMessage) {
+            setMessages([
+              {
+                id: "first_mes",
+                role: "assistant",
+                content: selectedChar.firstMessage,
+                createdAt: new Date().toISOString(),
+              },
+            ]);
+          } else {
+            setMessages(data);
+          }
+        }
       })
       .catch(() => {});
   }, [selectedChar]);
