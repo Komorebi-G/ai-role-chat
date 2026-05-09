@@ -1,35 +1,42 @@
-# AI Role Chat — 维护 todo
+# TODO — AI Role Chat
 
-## 一、已有功能总结
+## 2026-05-10: Conversation table error 已修复
 
-- Next.js 15 (App Router) + React 19 + TypeScript + SQLite/Turso + Prisma + DeepSeek API
-- JWT 认证（jose）：注册/登录/登出，httpOnly cookie，7 天有效期
-- 双模式数据库：本地 SQLite / Turso 云端 SQLite
-- 角色卡系统：JSON 文件 CRUD + 导入导出，字段 fallback 容错
-- 分层 Prompt 构建 + 上下文裁剪
-- per-user 速率限制 + 30 秒超时
-- 内置账号：演示 123/123（内存隔离会话）、管理员 lbh/lbh
-- 管理员面板：查看/删除用户
-- WeChat 风格 UI：聊天列表 + 聊天气泡（绿色/白色）+ 抽屉侧边栏 + 顶部导航 + 底部输入
-- AI 流式输出、Markdown 渲染、复制/重新生成
-- 深色模式（CSS 变量）、移动端响应式（桌面 480px 居中）
-- ESLint + typecheck + vitest 测试（14 tests）
+**问题**: 发送消息时报 `no such table: main.Conversation`。
 
-## 二、已完成
+**根因**: dev server 在 Conversation 迁移执行之前就已启动，进程中缓存的 Prisma client 不包含 Conversation 模型。虽然数据库表已存在，但 Prisma client 在生成时 schema 里还没有 Conversation。
 
-详见 [CHANGELOG.md](./CHANGELOG.md)
+**修复**:
+1. 杀掉旧的 dev server 进程
+2. 重新生成 Prisma client (`npx prisma generate`)
+3. 创建 `.env` 文件写入 `DATABASE_URL="file:./dev.db"`（便于 Prisma CLI 读取）
+4. 重新启动 dev server
 
-## 三、Bug 修复记录
+**验证**: curl 测试登录 → 列出角色 → 发送消息 → 列出会话，全部通过。`npm run build` 成功。
 
-### Conversation 表缺失 ✅
-- **现象**：发送消息时 `no such table: main.Conversation`
-- **原因**：迁移 `20260509150453_add_conversations` 未在当前数据库执行
-- **修复**：运行 `DATABASE_URL="file:./dev.db" npx prisma migrate dev` 应用迁移
-- **验证**：curl 测试登录 → 获取会话列表 → 发送消息 → AI 正常回复
-- **结果**：lint ✅ typecheck ✅ test ✅ build ✅
+---
 
-## 四、底层优化（暂缓）
+## 已有功能总结
 
-- Token 精确计算（tiktoken）
-- CSRF 保护
-- 多实例速率限制同步
+- JWT 认证（登录/注册/登出），httpOnly cookie
+- 双账户：demo (123/123, 内存存储) + admin (lbh/lbh, DB 存储)
+- 角色卡系统：JSON 文件存储，CRUD，导入/导出
+- AI 对话：DeepSeek v4-flash，支持 SSE 流式输出
+- 多会话管理：每个角色可创建多个对话
+- WeChat 风格 UI：移动端优先，480px 居中容器，抽屉侧栏
+- 深色模式：CSS 变量 + localStorage 持久化
+- Markdown 渲染 + 代码高亮
+- 消息操作：复制、重新生成
+- 管理员面板：用户列表、删除用户
+- 设置面板：temperature、maxTokens 可调
+- 速率限制：内存滑动窗口 30 req/min
+
+## 可扩展方向
+
+- 真正的 tokenizer（替换字符估算）
+- 用户自助修改密码
+- 角色卡图片/头像上传
+- 对话搜索
+- 对话导出
+- 国际化 (i18n)
+- 更好的错误提示（当前对用户不够友好）
