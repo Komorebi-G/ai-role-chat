@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAllCharacters, getCharacter, reloadCharacters } from "@/lib/character";
+import { getAllCharacters, getCharacter, reloadCharacters, getCharacterFilePath } from "@/lib/character";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import fs from "fs";
@@ -101,8 +101,8 @@ export async function PUT(req: Request) {
     const { searchParams } = new URL(req.url);
     const characterId = searchParams.get("id") || body.id;
 
-    const filepath = path.join(process.cwd(), "characters", `${characterId}.json`);
-    if (!fs.existsSync(filepath)) {
+    const filepath = getCharacterFilePath(characterId);
+    if (!filepath) {
       return NextResponse.json({ error: "Character not found" }, { status: 404 });
     }
 

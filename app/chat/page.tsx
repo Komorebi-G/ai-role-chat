@@ -75,7 +75,8 @@ export default function ChatPage() {
   const [activeConversationId, setActiveConversationId] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // input disabled + general loading
+  const [thinking, setThinking] = useState(false); // "thinking" bubble visible
   const [error, setError] = useState("");
   const [unauthorized, setUnauthorized] = useState(false);
   const [role, setRole] = useState<string>("user");
@@ -239,10 +240,10 @@ export default function ChatPage() {
     setMessages((prev) => [
       ...prev,
       { id: userMsgId, role: "user", content: message, createdAt: new Date().toISOString() },
-      { id: assistantMsgId, role: "assistant", content: "", createdAt: new Date().toISOString() },
     ]);
 
     setLoading(true);
+    setThinking(true);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -261,30 +262,40 @@ export default function ChatPage() {
       if (!res.ok) {
         const data = await res.json();
         setError(data.error || "Send failed");
-        setMessages((prev) => prev.filter((m) => m.id !== userMsgId && m.id !== assistantMsgId));
+        setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
+        setLoading(false);
         return;
       }
 
       const reader = res.body?.getReader();
       if (!reader) {
         setError("Streaming not supported");
-        setMessages((prev) => prev.filter((m) => m.id !== userMsgId && m.id !== assistantMsgId));
+        setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
+        setLoading(false);
         return;
       }
 
       const decoder = new TextDecoder();
       let buffer = "";
+      let assistantAdded = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        setMessages((prev) => prev.map((m) => m.id === assistantMsgId ? { ...m, content: buffer } : m));
+        if (!assistantAdded) {
+          assistantAdded = true;
+          setThinking(false);
+          setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: buffer, createdAt: new Date().toISOString() }]);
+        } else {
+          setMessages((prev) => prev.map((m) => m.id === assistantMsgId ? { ...m, content: buffer } : m));
+        }
       }
     } catch {
       setError("Network error");
-      setMessages((prev) => prev.filter((m) => m.id !== userMsgId && m.id !== assistantMsgId));
+      setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
     } finally {
       setLoading(false);
+      setThinking(false);
     }
   }
 
@@ -408,6 +419,7 @@ export default function ChatPage() {
     setMessages(msgs);
 
     setLoading(true);
+    setThinking(true);
     setError("");
     try {
       const res = await fetch("/api/chat", {
@@ -416,22 +428,28 @@ export default function ChatPage() {
         body: JSON.stringify({ characterId: selectedChar.id, conversationId: activeConversationId, message: lastUserMsg.content, stream: true, temperature: settings.temperature, maxTokens: settings.maxTokens }),
       });
       if (res.status === 401) { setUnauthorized(true); return; }
-      if (!res.ok) { const d = await res.json(); setError(d.error || "Regenerate failed"); return; }
+      if (!res.ok) { const d = await res.json(); setError(d.error || "Regenerate failed"); setLoading(false); setThinking(false); return; }
       const reader = res.body?.getReader();
-      if (!reader) { setError("Streaming not supported"); return; }
+      if (!reader) { setError("Streaming not supported"); setLoading(false); setThinking(false); return; }
 
       const assistantMsgId = (Date.now() + 1).toString();
-      setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: "", createdAt: new Date().toISOString() }]);
       const decoder = new TextDecoder();
       let buffer = "";
+      let assistantAdded = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        setMessages((prev) => prev.map((m) => m.id === assistantMsgId ? { ...m, content: buffer } : m));
+        if (!assistantAdded) {
+          assistantAdded = true;
+          setThinking(false);
+          setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: buffer, createdAt: new Date().toISOString() }]);
+        } else {
+          setMessages((prev) => prev.map((m) => m.id === assistantMsgId ? { ...m, content: buffer } : m));
+        }
       }
     } catch { setError("Network error"); }
-    finally { setLoading(false); }
+    finally { setLoading(false); setThinking(false); }
   }
 
   function openAdmin() {
@@ -669,7 +687,7 @@ export default function ChatPage() {
                 <button className="wx-action-btn" onClick={() => handleCopy(m.content, m.id)}>
                   {copiedId === m.id ? "Copied!" : "Copy"}
                 </button>
-                {m.role === "assistant" && i === arr.length - 1 && !loading && (
+                {m.role === "assistant" && i === arr.length - 1 && !loading && !thinking && (
                   <button className="wx-action-btn" onClick={handleRegenerate}>Regenerate</button>
                 )}
               </div>
@@ -681,7 +699,7 @@ export default function ChatPage() {
             )}
           </div>
         ))}
-        {loading && (
+        {thinking && (
           <div className="wx-msg">
             <div className="wx-avatar" style={{ background: "var(--primary)" }}>
               {avatarLetter(selectedChar.name)}

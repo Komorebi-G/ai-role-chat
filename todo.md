@@ -1,52 +1,45 @@
 # TODO — AI Role Chat
 
-## 2026-05-10: Turso 云端缺少 Conversation 表 ✅
+## 2026-05-10: 修复多角色文件名与 ID 不匹配的编辑失败 ✅
 
-**问题**: `no such table: main.Conversation` 反复出现。
+**发现**: 导入 `ben.json` 后分析多角色支持。大部分功能正常，但发现一个问题：
+- `ben.json` 内部 `id` 为 `"lbh_system_architect"`，与文件名不一致
+- 后端 PUT 接口直接用 `{characterId}.json` 查找文件，导致编辑这种角色时报 404
 
-**根因分析**:
-- 本地 SQLite (`prisma/dev.db`) — 迁移已应用，表存在 ✅
-- Turso 云端（Vercel 生产环境）— 迁移从未应用，Conversation 表不存在 ❌
-- 之前两次修复只处理了本地，没碰 Turso
+**多角色其他方面均正常**:
+- 角色列表展示、切换 ✅
+- 会话/消息完全隔离（按 characterId + conversationId）✅
+- Prompt 构建各角色独立 ✅
+- firstMessage 各角色独立 ✅
 
 **修复**:
-1. 创建 `scripts/migrate-turso.mjs` — 在 Vercel 构建时自动检查并应用缺失的迁移
-   - 检查 Turso 环境变量是否设置（未设置则跳过，本地开发不影响）
-   - 创建 `_prisma_migrations` 表（如不存在）
-   - 检查 `20260509150453_add_conversations` 迁移是否已应用
-   - 未应用则执行迁移 SQL（`executeMultiple` 批量执行）
-   - 记录迁移到 `_prisma_migrations`
-2. 更新 `package.json` build 脚本：`node scripts/migrate-turso.mjs && next build`
-3. ESLint flat config 排除 `scripts/` 目录
+1. `lib/character.ts` — 新增 `getCharacterFilePath(id)` 函数，扫描目录逐个读取 JSON 匹配 id，替代简单的 `{id}.json` 假设
+2. `app/api/characters/route.ts` PUT — 改用 `getCharacterFilePath()` 查找文件
 
-**Vercel 构建流程**: `npm run build` → 自动检测 Turso 环境变量 → 应用缺失迁移 → 构建 Next.js
+**验证**: curl 测试 PUT alice (文件名匹配) + PUT lbh_system_architect (文件名不匹配) 均成功 ✅
 
-**验证**:
-- 本地运行 `node scripts/migrate-turso.mjs` → 正确跳过（无 Turso 环境变量）
-- `npm run build` → 成功
-- typecheck, lint, test → 全部通过 ✅
+---
+
+## 2026-05-10: 修复发送消息时双气泡显示问题 ✅
+
+- 新增 `thinking` 状态与 `loading` 解耦
+- 发送后只显示用户气泡 + "Thinking..." 指示器
+- 首个 chunk 到达时：消除 Thinking + 添加 assistant 气泡
+- `app/chat/page.tsx`
 
 ---
 
 ## 已有功能
 
-- JWT 认证（登录/注册/登出），httpOnly cookie
-- 双账户：demo (123/123, 内存存储) + admin (lbh/lbh, DB 存储)
-- 角色卡系统：JSON 文件 CRUD，导入/导出
+- JWT 认证，httpOnly cookie，双账户体系
+- 角色卡系统：JSON 文件 CRUD，导入/导出，多角色支持
 - AI 对话：DeepSeek v4-flash，SSE 流式输出
 - 多会话管理：每个角色可创建多个对话
 - WeChat 风格 UI：移动端优先，480px 居中，抽屉侧栏
-- 深色模式：CSS 变量 + localStorage
-- Markdown 渲染 + 代码高亮
-- 消息操作：复制、重新生成
-- 管理员面板：用户列表、删除用户
-- 设置面板：temperature、maxTokens
-- 速率限制：30 req/min
+- 深色模式、Markdown 渲染、消息操作（复制/重新生成）
+- 管理员面板、设置面板、速率限制
+- 自动 Turso 迁移（Vercel 构建时）
 
 ## 可扩展方向
 
-- 真正的 tokenizer
-- 用户修改密码
-- 角色卡头像上传
-- 对话搜索/导出
-- i18n
+- Tokenizer、用户修改密码、角色卡头像、对话搜索/导出、i18n

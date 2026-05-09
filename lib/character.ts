@@ -17,6 +17,22 @@ export interface Character {
 
 const charactersDir = path.join(process.cwd(), "characters");
 
+export function getCharacterFilePath(id: string): string | null {
+  if (!fs.existsSync(charactersDir)) return null;
+  const files = fs.readdirSync(charactersDir).filter((f) => f.endsWith(".json"));
+  for (const file of files) {
+    try {
+      const raw = fs.readFileSync(path.join(charactersDir, file), "utf-8");
+      const data = JSON.parse(raw);
+      if (data.id === id) return path.join(charactersDir, file);
+    } catch { /* skip invalid files */ }
+  }
+  // Fallback: also check {id}.json directly
+  const directPath = path.join(charactersDir, `${id}.json`);
+  if (fs.existsSync(directPath)) return directPath;
+  return null;
+}
+
 function readJsonFiles(dir: string): Character[] {
   if (!fs.existsSync(dir)) return [];
   return fs
