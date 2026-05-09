@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth, DEMO_USER_ID } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getDemoSessionId, getDemoConversations } from "@/lib/demo-store";
+import { getDemoSessionId, getDemoConversations, getDemoMessages } from "@/lib/demo-store";
 
 export async function GET(req: Request) {
   let userId: string;
@@ -20,13 +20,19 @@ export async function GET(req: Request) {
 
   if (userId === DEMO_USER_ID) {
     const sessionId = await getDemoSessionId();
-    return NextResponse.json(getDemoConversations(sessionId));
+    const convs = getDemoConversations(sessionId);
+    const messages = getDemoMessages(sessionId);
+    const withCounts = convs.map((c) => ({
+      ...c,
+      _count: { messages: messages.filter((m) => m.conversationId === c.id).length },
+    }));
+    return NextResponse.json(withCounts);
   }
 
   const conversations = await db.conversation.findMany({
     where: { userId, characterId },
     orderBy: { createdAt: "desc" },
-    select: { id: true, title: true, createdAt: true },
+    select: { id: true, title: true, createdAt: true, _count: { select: { messages: true } } },
   });
 
   return NextResponse.json(conversations);

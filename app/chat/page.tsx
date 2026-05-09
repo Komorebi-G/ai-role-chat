@@ -25,6 +25,7 @@ interface ConversationSummary {
   id: string;
   title: string;
   createdAt: string;
+  _count?: { messages: number };
 }
 
 interface AdminUser {
@@ -926,7 +927,7 @@ export default function ChatPage() {
                           onClick={() => handleSelectConversation(conv.id)}
                         >
                           <span>{conv.title}</span>
-                          <span className="drawer-conv-time">{new Date(conv.createdAt).toLocaleDateString()}</span>
+                          <span className="drawer-conv-time">{new Date(conv.createdAt).toLocaleDateString()}{(conv._count?.messages ?? 0) > 0 && ` · ${conv._count?.messages}`}</span>
                         </div>
                       ))}
                       <button className="drawer-new-chat-btn" onClick={handleNewChat}>+ New Chat</button>
