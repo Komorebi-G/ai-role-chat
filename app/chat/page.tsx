@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from "react-markdown";
 
 interface Character {
   id: string;
@@ -300,7 +301,7 @@ export default function ChatPage() {
               {error && <div className="error-msg">{error}</div>}
               {messages.map((m) => (
                 <div key={m.id} className={`message ${m.role}`}>
-                  {m.content}
+                  <ReactMarkdown>{m.content}</ReactMarkdown>
                 </div>
               ))}
               {loading && (
