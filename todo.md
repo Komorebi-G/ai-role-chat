@@ -30,7 +30,7 @@
 - [ ] **无测试** — 项目完全没有测试套件（单元测试 / 集成测试）
 - [ ] **角色卡只能手动编辑 JSON** — 无在线导入/创建/编辑界面
 - [ ] **无对话管理** — 不能删除单条对话、清空历史、导出对话
-- [ ] **无 per-user 速率限制** — 限流是全局的，一个用户滥用影响所有人
+- [x] **无 per-user 速率限制** — ✅ 已改为 per-user：`Map<userId, timestamps[]>`，每人独立限流
 
 ## 三、可扩展方向
 
@@ -50,7 +50,7 @@
 | 2 | 修复 Token 估算：引入 tiktoken | 中 | `lib/chat/context.ts` | `lib/chat/context.ts`, `package.json` |
 | 3 | 添加 AI 流式输出（streaming） | 中 | 前后端 | `lib/deepseek.ts`, `lib/ai.ts`, `app/api/chat/route.ts`, `app/chat/page.tsx` |
 | 4 | 演示账号隔离：每个浏览器独立会话 | 中 | 聊天 API、前端 | `app/api/chat/route.ts`, `app/chat/page.tsx` |
-| 5 | 添加 per-user 速率限制 | 低 | `lib/ai.ts` | `lib/ai.ts` |
+| 5 | ✅ 添加 per-user 速率限制 | 低 | `lib/ai.ts` | `lib/ai.ts`, `app/api/chat/route.ts` |
 | 6 | 对话清空功能 | 低 | API + 前端 | `app/api/chat/route.ts`, `app/chat/page.tsx` |
 | 7 | 添加基础测试框架（vitest + 单元测试） | 中 | 全局 | `package.json`, `lib/*.test.ts` |
 
@@ -59,12 +59,8 @@
 | 轮次 | 任务 | 修改文件 | 测试结果 |
 |------|------|----------|----------|
 | - | admin 角色系统、用户管理面板、密码校验、消息动画、分层 Prompt 构建、上下文裁剪、角色卡扩展、first_mes 开场白 | 多个文件 | ✅ build 通过 |
-
-**第 1 轮**：添加 ESLint (flat config) + TypeScript type-check 脚本
-- 新增 `eslint.config.mjs`：使用 `@eslint/js` + `typescript-eslint` + `eslint-plugin-react` + `eslint-plugin-react-hooks` + `@next/eslint-plugin-next`
-- `package.json`：添加 `lint` 和 `typecheck` 脚本
-- 修复 3 个 lint 错误：`err: any` → `err: unknown`（2处），删除未使用的 `Character` 接口
-- 验证：`npm run lint` ✅、`npm run typecheck` ✅、`npm run build` ✅
+| 1 | ESLint flat config + TypeScript type-check 脚本 | `package.json`, `eslint.config.mjs`, `app/api/chat/route.ts`, `lib/ai.ts`, `app/page.tsx` | ✅ lint typecheck build |
+| 2 | per-user 速率限制 | `lib/ai.ts`, `app/api/chat/route.ts` | ✅ lint typecheck build |
 
 ## 六、待确认问题
 
@@ -79,4 +75,11 @@
 - **选择任务**：添加 ESLint + TypeScript type-check 脚本
 - **修改文件**：`package.json` (+2 scripts)、`eslint.config.mjs` (新增)、`app/api/chat/route.ts` (err type)、`lib/ai.ts` (err type)、`app/page.tsx` (remove unused interface)
 - **测试结果**：`npm run lint` ✅ 0 errors、`npm run typecheck` ✅ 0 errors、`npm run build` ✅
+- **新发现问题**：无
+
+### 第 2 轮 (2026-05-09)
+- **选择任务**：per-user 速率限制
+- **修改文件**：`lib/ai.ts`（单数组 → `Map<userId, number[]>`，`aiChat` 新增 `userId` 参数）、`app/api/chat/route.ts`（传入 userId）
+- **改动量**：2 处函数签名变更，~10 行核心逻辑
+- **测试结果**：`npm run lint` ✅、`npm run typecheck` ✅、`npm run build` ✅
 - **新发现问题**：无

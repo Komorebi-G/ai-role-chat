@@ -2,21 +2,36 @@ import { chatWithDeepSeek, ChatMessage } from "./deepseek";
 
 const windowMs = 60_000;
 const maxRequests = 30;
-const requestLog: number[] = [];
+const userRequestLogs = new Map<string, number[]>();
 
-function checkRateLimit(): void {
+function checkRateLimit(userId: string): void {
   const now = Date.now();
-  while (requestLog.length && requestLog[0] < now - windowMs) {
-    requestLog.shift();
+  const log = userRequestLogs.get(userId);
+
+  if (!log) {
+    userRequestLogs.set(userId, [now]);
+    return;
   }
-  if (requestLog.length >= maxRequests) {
+
+  // Remove expired entries
+  while (log.length && log[0] < now - windowMs) {
+    log.shift();
+  }
+
+  if (log.length >= maxRequests) {
     throw new Error("Rate limit exceeded. Try again later.");
   }
-  requestLog.push(now);
+
+  log.push(now);
+
+  // Cleanup empty logs to prevent memory leak
+  if (log.length === 0) {
+    userRequestLogs.delete(userId);
+  }
 }
 
-export async function aiChat(messages: ChatMessage[]): Promise<string> {
-  checkRateLimit();
+export async function aiChat(messages: ChatMessage[], userId: string): Promise<string> {
+  checkRateLimit(userId);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);

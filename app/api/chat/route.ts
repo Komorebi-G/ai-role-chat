@@ -95,7 +95,7 @@ export async function POST(req: Request) {
     const trimmedHistory = trimHistory(history);
     const messages = buildPrompt(character, trimmedHistory, "");
 
-    const reply = await aiChat(messages);
+    const reply = await aiChat(messages, userId);
 
     // Save assistant reply
     if (userId === DEMO_USER_ID) {
