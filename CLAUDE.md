@@ -38,7 +38,12 @@ Two auth patterns in API routes:
 - **`requireAuth()`** — throws `new Error("Unauthorized")` if no session. Use in try/catch to return 401 JSON. Simpler, used by most routes.
 - **`getSession()`** — returns userId or null without throwing. Use when you need custom error handling (e.g., admin routes that return 403 for non-admins).
 
-There is a hardcoded demo account: username `123`, password `123`. It has a reserved user ID `"demo"` (`DEMO_USER_ID` in `lib/auth.ts`). The demo user **completely bypasses the database** — its chat history is stored in an in-memory array (`demoMessages` in `app/api/chat/route.ts`). This means demo chat data is ephemeral (lost on server restart) and shared across all demo sessions. `/api/auth/me` handles the demo user specially, returning hardcoded role `"user"` without a DB lookup.
+Hardcoded accounts in login route (`app/api/auth/login/route.ts`), checked before normal DB lookup:
+
+- **Demo account** — `123` / `123`. Reserved user ID `"demo"` (`DEMO_USER_ID` in `lib/auth.ts`). **Completely bypasses the database** — chat history stored in an in-memory array (`demoMessages` in `app/api/chat/route.ts`), ephemeral (lost on server restart), shared across all demo sessions. Role is `"user"`.
+- **Admin account** — `lbh` / `lbh`. Auto-created in the database on first login with `role: "admin"`. Normal DB-backed storage, chat history persists.
+
+`/api/auth/me` handles the demo user specially, returning hardcoded role `"user"` without a DB lookup.
 
 ### Role system
 
@@ -60,8 +65,6 @@ app/api/chat/ → lib/prompt/buildPrompt.ts → lib/chat/context.ts → lib/ai.t
 - `lib/ai.ts`: wraps DeepSeek with in-memory rate limiting (30 req/min sliding window) and a 30-second `AbortController` timeout.
 - `lib/prompt/buildPrompt.ts`: assembles final messages array in layers — system prompt (global rules + character system_prompt) → character card info → example dialogue (parsed from `mes_example`) → trimmed chat history → user input. All output as `ChatMessage[]` format.
 - `lib/chat/context.ts`: trims history to fit context window budget (default 20 messages / 8000 chars). FIFO strategy — oldest messages discarded first. Uses character-count estimation (TODO: proper tokenizer).
-
-The old inline system prompt (Chinese string join in the chat route) is replaced by `buildPrompt()`. The old `take: 20` is replaced by `trimHistory()`.
 
 ### Characters
 
@@ -85,6 +88,8 @@ Static JSON files in `characters/`. Schema defined in `lib/character.ts`:
 ### Frontend routing
 
 `app/page.tsx` is an auth gate: it fetches `/api/characters` on mount. If 200 → redirect to `/chat`; if 401 → redirect to `/login`. All page components are `"use client"`. Login and register pages call their respective API routes and redirect to `/chat` on success.
+
+`app/chat/page.tsx` loads characters on mount, fetches `/api/auth/me` for role (to conditionally show admin panel). When a character is selected and chat history is empty, the character's `firstMessage` is displayed as the initial assistant message (not persisted to DB).
 
 ### Environment variables
 

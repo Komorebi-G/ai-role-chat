@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireAuth, DEMO_USER_ID } from "@/lib/auth";
 import { getCharacter } from "@/lib/character";
-import { aiChat } from "@/lib/ai";
+import { aiChat, aiChatStream } from "@/lib/ai";
 import { buildPrompt } from "@/lib/prompt/buildPrompt";
 import { trimHistory } from "@/lib/chat/context";
 import { db } from "@/lib/db";
@@ -12,9 +12,11 @@ interface MemMessage {
   id: string;
   role: string;
   content: string;
+  conversationId: string;
   createdAt: string;
 }
 const demoSessions = new Map<string, MemMessage[]>();
+const demoConversations = new Map<string, { id: string; title: string; createdAt: string }[]>();
 
 async function getDemoSessionId(): Promise<string> {
   const store = await cookies();
@@ -30,6 +32,26 @@ function getDemoMessages(sessionId: string): MemMessage[] {
   return messages;
 }
 
+function getDemoConversations(sessionId: string): { id: string; title: string; createdAt: string }[] {
+  let convs = demoConversations.get(sessionId);
+  if (!convs) {
+    convs = [];
+    demoConversations.set(sessionId, convs);
+  }
+  return convs;
+}
+
+function getOrCreateDemoConversation(sessionId: string): string {
+  const convs = getDemoConversations(sessionId);
+  const conv = convs[0];
+  if (!conv) {
+    const newConv = { id: crypto.randomUUID(), title: "New Chat", createdAt: new Date().toISOString() };
+    convs.push(newConv);
+    return newConv.id;
+  }
+  return conv.id;
+}
+
 export async function GET(req: Request) {
   let userId: string;
   try {
@@ -40,6 +62,7 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const characterId = searchParams.get("characterId");
+  let conversationId = searchParams.get("conversationId");
 
   if (!characterId) {
     return NextResponse.json({ error: "characterId required" }, { status: 400 });
@@ -47,17 +70,34 @@ export async function GET(req: Request) {
 
   if (userId === DEMO_USER_ID) {
     const sessionId = await getDemoSessionId();
-    const messages = getDemoMessages(sessionId);
-    return NextResponse.json(messages);
+    if (!conversationId) {
+      conversationId = getOrCreateDemoConversation(sessionId);
+    }
+    const messages = getDemoMessages(sessionId).filter(m => m.conversationId === conversationId);
+    return NextResponse.json({ messages, conversationId });
+  }
+
+  // Auto-find or create conversation for this user+character
+  if (!conversationId) {
+    let conv = await db.conversation.findFirst({
+      where: { userId, characterId },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!conv) {
+      conv = await db.conversation.create({
+        data: { userId, characterId, title: "New Chat" },
+      });
+    }
+    conversationId = conv.id;
   }
 
   const messages = await db.message.findMany({
-    where: { userId, characterId },
+    where: { userId, characterId, conversationId },
     orderBy: { createdAt: "asc" },
     select: { id: true, role: true, content: true, createdAt: true },
   });
 
-  return NextResponse.json(messages);
+  return NextResponse.json({ messages, conversationId });
 }
 
 export async function DELETE(req: Request) {
@@ -70,20 +110,28 @@ export async function DELETE(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const characterId = searchParams.get("characterId");
+  const conversationId = searchParams.get("conversationId");
 
-  if (!characterId) {
-    return NextResponse.json({ error: "characterId required" }, { status: 400 });
+  if (!characterId || !conversationId) {
+    return NextResponse.json({ error: "characterId and conversationId required" }, { status: 400 });
   }
 
   if (userId === DEMO_USER_ID) {
     const sessionId = await getDemoSessionId();
-    const messages = getDemoMessages(sessionId);
-    messages.length = 0;
+    const all = getDemoMessages(sessionId);
+    const filtered = all.filter(m => m.conversationId !== conversationId);
+    demoSessions.set(sessionId, filtered);
+    const convs = getDemoConversations(sessionId);
+    demoConversations.set(sessionId, convs.filter(c => c.id !== conversationId));
     return NextResponse.json({ ok: true });
   }
 
   await db.message.deleteMany({
-    where: { userId, characterId },
+    where: { userId, characterId, conversationId },
+  });
+
+  await db.conversation.deleteMany({
+    where: { id: conversationId, userId },
   });
 
   return NextResponse.json({ ok: true });
@@ -98,7 +146,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { characterId, message, temperature, maxTokens } = await req.json();
+    const { characterId, conversationId, message, temperature, maxTokens, stream } = await req.json();
 
     if (!characterId || !message) {
       return NextResponse.json({ error: "characterId and message required" }, { status: 400 });
@@ -109,8 +157,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Character not found" }, { status: 404 });
     }
 
-    // Resolve demo session ID once for this request
     const demoSessionId = userId === DEMO_USER_ID ? await getDemoSessionId() : null;
+
+    // Resolve conversation ID
+    let convId = conversationId;
+    if (demoSessionId) {
+      if (!convId) convId = getOrCreateDemoConversation(demoSessionId);
+    } else if (!convId) {
+      let conv = await db.conversation.findFirst({
+        where: { userId, characterId },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!conv) {
+        conv = await db.conversation.create({
+          data: { userId, characterId, title: "New Chat" },
+        });
+      }
+      convId = conv.id;
+    }
 
     // Save user message, then load and trim history
     let history: { role: "user" | "assistant"; content: string }[];
@@ -121,18 +185,21 @@ export async function POST(req: Request) {
         id: crypto.randomUUID(),
         role: "user",
         content: message,
+        conversationId: convId,
         createdAt: new Date().toISOString(),
       });
-      history = messages.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      }));
+      history = messages
+        .filter(m => m.conversationId === convId)
+        .map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        }));
     } else {
       await db.message.create({
-        data: { userId, characterId, role: "user", content: message },
+        data: { userId, characterId, conversationId: convId, role: "user", content: message },
       });
       const rows = await db.message.findMany({
-        where: { userId, characterId },
+        where: { userId, characterId, conversationId: convId },
         orderBy: { createdAt: "asc" },
       });
       history = rows.map((r) => ({
@@ -145,20 +212,60 @@ export async function POST(req: Request) {
     const trimmedHistory = trimHistory(history);
     const messages = buildPrompt(character, trimmedHistory, "");
 
+    if (stream) {
+      const encoder = new TextEncoder();
+      const readable = new ReadableStream({
+        async start(controller) {
+          let fullReply = "";
+          try {
+            for await (const chunk of aiChatStream(messages, userId, { temperature, maxTokens })) {
+              fullReply += chunk;
+              controller.enqueue(encoder.encode(chunk));
+            }
+            controller.close();
+
+            if (demoSessionId) {
+              const demoMessages = getDemoMessages(demoSessionId);
+              demoMessages.push({
+                id: crypto.randomUUID(),
+                role: "assistant",
+                content: fullReply,
+                conversationId: convId,
+                createdAt: new Date().toISOString(),
+              });
+            } else {
+              await db.message.create({
+                data: { userId, characterId, conversationId: convId, role: "assistant", content: fullReply },
+              });
+            }
+          } catch (err: unknown) {
+            controller.error(err);
+          }
+        },
+      });
+
+      return new Response(readable, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
+
     const reply = await aiChat(messages, userId, { temperature, maxTokens });
 
-    // Save assistant reply
     if (demoSessionId) {
       const demoMessages = getDemoMessages(demoSessionId);
       demoMessages.push({
         id: crypto.randomUUID(),
         role: "assistant",
         content: reply,
+        conversationId: convId,
         createdAt: new Date().toISOString(),
       });
     } else {
       await db.message.create({
-        data: { userId, characterId, role: "assistant", content: reply },
+        data: { userId, characterId, conversationId: convId, role: "assistant", content: reply },
       });
     }
 
