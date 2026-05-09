@@ -6,6 +6,14 @@ import { buildPrompt } from "@/lib/prompt/buildPrompt";
 import { trimHistory } from "@/lib/chat/context";
 import { db } from "@/lib/db";
 import { getDemoSessionId, getDemoMessages, getDemoConversations, getOrCreateDemoConversation, setDemoMessages, setDemoConversations } from "@/lib/demo-store";
+import { getActiveWorldEntries } from "@/lib/world";
+
+function extractWorldEntryIds(entries: string[]): string[] {
+  return [...new Set(entries.map((e) => {
+    const match = e.match(/\[World Info: ([^\]]+)\]/);
+    return match ? match[1] : "";
+  }).filter(Boolean))];
+}
 
 export async function GET(req: Request) {
   let userId: string;
@@ -29,7 +37,9 @@ export async function GET(req: Request) {
       conversationId = getOrCreateDemoConversation(sessionId);
     }
     const messages = getDemoMessages(sessionId).filter(m => m.conversationId === conversationId);
-    return NextResponse.json({ messages, conversationId });
+    const history = messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    const { before, after } = getActiveWorldEntries(history);
+    return NextResponse.json({ messages, conversationId, worldEntryIds: extractWorldEntryIds([...before, ...after]) });
   }
 
   // Auto-find or create conversation for this user+character
@@ -52,7 +62,9 @@ export async function GET(req: Request) {
     select: { id: true, role: true, content: true, swipes: true, swipeId: true, createdAt: true },
   });
 
-  return NextResponse.json({ messages, conversationId });
+  const history = messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+  const { before, after } = getActiveWorldEntries(history);
+  return NextResponse.json({ messages, conversationId, worldEntryIds: extractWorldEntryIds([...before, ...after]) });
 }
 
 export async function DELETE(req: Request) {
@@ -186,8 +198,10 @@ export async function POST(req: Request) {
       }));
     }
 
-    // Trim history to fit context window, then build prompt
+    // Trim history to fit context window, then compute world entries and build prompt
     const trimmedHistory = trimHistory(history);
+    const { before: worldBefore, after: worldAfter } = getActiveWorldEntries(trimmedHistory);
+    const activeWorldIds = extractWorldEntryIds([...worldBefore, ...worldAfter]);
     const promptMessages = buildPrompt(character, trimmedHistory, "", persona);
 
     if (stream) {
@@ -257,6 +271,7 @@ export async function POST(req: Request) {
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
           "X-Content-Type-Options": "nosniff",
+          "X-Active-World-Entries": activeWorldIds.join(","),
         },
       });
     }
@@ -308,7 +323,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ reply });
+    return NextResponse.json({ reply, worldEntryIds: activeWorldIds });
   } catch (err: unknown) {
     console.error("Chat error:", err);
     const message = err instanceof Error ? err.message : "Internal server error";

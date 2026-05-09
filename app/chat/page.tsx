@@ -83,6 +83,7 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false); // input disabled + general loading
   const [thinking, setThinking] = useState(false); // "thinking" bubble visible
   const [error, setError] = useState("");
+  const [activeWorldEntryIds, setActiveWorldEntryIds] = useState<string[]>([]);
   const [unauthorized, setUnauthorized] = useState(false);
   const [role, setRole] = useState<string>("user");
   const [showAdmin, setShowAdmin] = useState(false);
@@ -169,6 +170,7 @@ export default function ChatPage() {
     if (!selectedChar || !activeConversationId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMessages([]);
+      setActiveWorldEntryIds([]);
       return;
     }
     let cancelled = false;
@@ -180,6 +182,7 @@ export default function ChatPage() {
       .then((data) => {
         if (cancelled) return;
         const msgs = data.messages || [];
+        setActiveWorldEntryIds(data.worldEntryIds || []);
         if (msgs.length === 0 && selectedChar.firstMessage) {
           const greetings = [selectedChar.firstMessage, ...(selectedChar.alternate_greetings || [])];
           setMessages([{ id: "first_mes", role: "assistant", content: selectedChar.firstMessage, swipes: JSON.stringify(greetings), swipeId: 0, createdAt: new Date().toISOString() }]);
@@ -276,6 +279,10 @@ export default function ChatPage() {
         setLoading(false);
         return;
       }
+
+      // Capture active world entries from response header
+      const worldHeader = res.headers.get("X-Active-World-Entries");
+      setActiveWorldEntryIds(worldHeader ? worldHeader.split(",").filter(Boolean) : []);
 
       const reader = res.body?.getReader();
       if (!reader) {
@@ -841,6 +848,15 @@ export default function ChatPage() {
         )}
         <div ref={messagesEnd} />
       </div>
+
+      {/* World entries indicator */}
+      {activeWorldEntryIds.length > 0 && (
+        <div className="world-entries-bar" title={`Active world entries: ${activeWorldEntryIds.join(", ")}`}>
+          {activeWorldEntryIds.map((id) => (
+            <span key={id} className="world-entry-badge">{id}</span>
+          ))}
+        </div>
+      )}
 
       {/* Token budget bar */}
       {(() => {

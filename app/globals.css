@@ -957,6 +957,24 @@ body {
 }
 
 /* ===== Token budget bar ===== */
+.world-entries-bar {
+  display: flex;
+  gap: 4px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+.world-entry-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--primary-light);
+  color: var(--primary);
+  white-space: nowrap;
+}
+
 .token-bar-wrap {
   height: 3px;
   background: var(--border);
