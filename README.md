@@ -63,7 +63,8 @@ ai-role-chat/
 │   ├── db.ts             # Prisma 客户端
 │   ├── auth.ts           # JWT 认证
 │   ├── character.ts      # 角色加载
-│   └── deepseek.ts       # DeepSeek API
+│   ├── deepseek.ts       # DeepSeek API 调用
+│   └── ai.ts             # AI 请求封装（超时/限流）
 ├── prisma/               # 数据库 Schema
 └── .env.example          # 环境变量示例
 ```
@@ -75,3 +76,28 @@ ai-role-chat/
 - API Key 仅存储在服务端 `.env.local`
 - 所有 API 接口校验登录状态
 - 用户只能看到自己的聊天记录
+
+## Vercel 部署
+
+```bash
+# 1. 安装 Vercel CLI
+npm i -g vercel
+
+# 2. 部署
+vercel
+
+# 3. 配置环境变量
+# 在 Vercel Dashboard → Settings → Environment Variables 添加：
+#   DEEPSEEK_API_KEY = sk-you-key
+
+# 4. 生产部署
+vercel --prod
+```
+
+### 环境变量
+
+| 变量名 | 说明 | 位置 |
+|--------|------|------|
+| `DEEPSEEK_API_KEY` | DeepSeek API 密钥 | `.env.local`（本地）/ Vercel 环境变量（生产） |
+| `JWT_SECRET` | JWT 签名密钥 | 生产环境务必更换为随机字符串 |
+| `DATABASE_URL` | SQLite 数据库路径 | 仅本地开发使用 |

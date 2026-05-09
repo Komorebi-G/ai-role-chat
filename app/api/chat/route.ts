@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getCharacter } from "@/lib/character";
-import { chatWithDeepSeek, ChatMessage } from "@/lib/deepseek";
+import { aiChat } from "@/lib/ai";
+import { ChatMessage } from "@/lib/deepseek";
 import { db } from "@/lib/db";
 
 export async function GET(req: Request) {
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
       })),
     ];
 
-    const reply = await chatWithDeepSeek(messages);
+    const reply = await aiChat(messages);
 
     // Save assistant message
     await db.message.create({

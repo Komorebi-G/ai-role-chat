@@ -3,7 +3,7 @@ export interface ChatMessage {
   content: string;
 }
 
-export async function chatWithDeepSeek(messages: ChatMessage[]) {
+export async function chatWithDeepSeek(messages: ChatMessage[], signal?: AbortSignal) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     throw new Error("DEEPSEEK_API_KEY is not configured");
@@ -21,6 +21,7 @@ export async function chatWithDeepSeek(messages: ChatMessage[]) {
       temperature: 0.8,
       max_tokens: 1024,
     }),
+    signal,
   });
 
   if (!res.ok) {
