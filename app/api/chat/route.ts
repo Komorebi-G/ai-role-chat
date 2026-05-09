@@ -43,6 +43,33 @@ export async function GET(req: Request) {
   return NextResponse.json(messages);
 }
 
+export async function DELETE(req: Request) {
+  let userId: string;
+  try {
+    userId = await requireAuth();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const characterId = searchParams.get("characterId");
+
+  if (!characterId) {
+    return NextResponse.json({ error: "characterId required" }, { status: 400 });
+  }
+
+  if (userId === DEMO_USER_ID) {
+    demoMessages.length = 0;
+    return NextResponse.json({ ok: true });
+  }
+
+  await db.message.deleteMany({
+    where: { userId, characterId },
+  });
+
+  return NextResponse.json({ ok: true });
+}
+
 export async function POST(req: Request) {
   let userId: string;
   try {

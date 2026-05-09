@@ -29,7 +29,8 @@
 ### 低优先级
 - [ ] **无测试** — 项目完全没有测试套件（单元测试 / 集成测试）
 - [ ] **角色卡只能手动编辑 JSON** — 无在线导入/创建/编辑界面
-- [ ] **无对话管理** — 不能删除单条对话、清空历史、导出对话
+- [x] **无对话清空功能** — ✅ 已添加 `DELETE /api/chat?characterId=` + 前端 Clear 按钮
+- [ ] **不能删除单条对话、导出对话** — Clear 已做，单条删除和导出待评估
 - [x] **无 per-user 速率限制** — ✅ 已改为 per-user：`Map<userId, timestamps[]>`，每人独立限流
 
 ## 三、可扩展方向
@@ -51,7 +52,7 @@
 | 3 | 添加 AI 流式输出（streaming） | 中 | 前后端 | `lib/deepseek.ts`, `lib/ai.ts`, `app/api/chat/route.ts`, `app/chat/page.tsx` |
 | 4 | 演示账号隔离：每个浏览器独立会话 | 中 | 聊天 API、前端 | `app/api/chat/route.ts`, `app/chat/page.tsx` |
 | 5 | ✅ 添加 per-user 速率限制 | 低 | `lib/ai.ts` | `lib/ai.ts`, `app/api/chat/route.ts` |
-| 6 | 对话清空功能 | 低 | API + 前端 | `app/api/chat/route.ts`, `app/chat/page.tsx` |
+| 6 | ✅ 对话清空功能 | 低 | API + 前端 | `app/api/chat/route.ts`, `app/chat/page.tsx`, `app/globals.css` |
 | 7 | 添加基础测试框架（vitest + 单元测试） | 中 | 全局 | `package.json`, `lib/*.test.ts` |
 
 ## 五、已完成任务
@@ -61,6 +62,7 @@
 | - | admin 角色系统、用户管理面板、密码校验、消息动画、分层 Prompt 构建、上下文裁剪、角色卡扩展、first_mes 开场白 | 多个文件 | ✅ build 通过 |
 | 1 | ESLint flat config + TypeScript type-check 脚本 | `package.json`, `eslint.config.mjs`, `app/api/chat/route.ts`, `lib/ai.ts`, `app/page.tsx` | ✅ lint typecheck build |
 | 2 | per-user 速率限制 | `lib/ai.ts`, `app/api/chat/route.ts` | ✅ lint typecheck build |
+| 3 | 对话清空功能 | `app/api/chat/route.ts`, `app/chat/page.tsx`, `app/globals.css` | ✅ lint typecheck build |
 
 ## 六、待确认问题
 
@@ -81,5 +83,12 @@
 - **选择任务**：per-user 速率限制
 - **修改文件**：`lib/ai.ts`（单数组 → `Map<userId, number[]>`，`aiChat` 新增 `userId` 参数）、`app/api/chat/route.ts`（传入 userId）
 - **改动量**：2 处函数签名变更，~10 行核心逻辑
+- **测试结果**：`npm run lint` ✅、`npm run typecheck` ✅、`npm run build` ✅
+- **新发现问题**：无
+
+### 第 3 轮 (2026-05-09)
+- **选择任务**：对话清空功能
+- **修改文件**：`app/api/chat/route.ts`（新增 DELETE handler）、`app/chat/page.tsx`（新增 handleClearChat + 状态 + Clear 按钮）、`app/globals.css`（新增 .clear-btn 样式）
+- **改动量**：API +25 行、前端 +23 行、CSS +20 行
 - **测试结果**：`npm run lint` ✅、`npm run typecheck` ✅、`npm run build` ✅
 - **新发现问题**：无

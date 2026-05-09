@@ -39,6 +39,7 @@ export default function ChatPage() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [clearLoading, setClearLoading] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -192,6 +193,27 @@ export default function ChatPage() {
     }
   }
 
+  async function handleClearChat() {
+    if (!selectedChar) return;
+    setClearLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/chat?characterId=${selectedChar.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Clear failed");
+        return;
+      }
+      setMessages([]);
+    } catch {
+      setError("Network error");
+    } finally {
+      setClearLoading(false);
+    }
+  }
+
   function openAdmin() {
     setShowAdmin(true);
     loadAdminUsers();
@@ -234,7 +256,16 @@ export default function ChatPage() {
       <main className="chat-main">
         {selectedChar ? (
           <>
-            <div className="chat-header">{selectedChar.name}</div>
+            <div className="chat-header">
+              <span>{selectedChar.name}</span>
+              <button
+                className="clear-btn"
+                onClick={handleClearChat}
+                disabled={clearLoading || messages.length === 0}
+              >
+                {clearLoading ? "Clearing..." : "Clear"}
+              </button>
+            </div>
             <div className="chat-messages">
               {error && <div className="error-msg">{error}</div>}
               {messages.map((m) => (
