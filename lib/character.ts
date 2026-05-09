@@ -11,6 +11,10 @@ export interface Character {
   // Extended fields (SillyTavern-inspired)
   mes_example?: string;
   system_prompt?: string;
+  post_history_instructions?: string;
+  alternate_greetings?: string[];
+  creator?: string;
+  character_version?: string;
   creator_notes?: string;
   tags?: string[];
 }
@@ -55,6 +59,10 @@ function normalizeCharacter(raw: Record<string, unknown>, file: string): Charact
     firstMessage: (raw.first_mes as string) || (raw.firstMessage as string) || "",
     mes_example: raw.mes_example as string | undefined,
     system_prompt: raw.system_prompt as string | undefined,
+    post_history_instructions: raw.post_history_instructions as string | undefined,
+    alternate_greetings: Array.isArray(raw.alternate_greetings) ? (raw.alternate_greetings as string[]) : undefined,
+    creator: (raw.creator as string) || undefined,
+    character_version: (raw.character_version as string) || undefined,
     creator_notes: raw.creator_notes as string | undefined,
     tags: Array.isArray(raw.tags) ? (raw.tags as string[]) : undefined,
   };

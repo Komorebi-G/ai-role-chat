@@ -18,6 +18,7 @@
   --bubble-other: #fff;
   --danger: #e0483b;
   --danger-hover: #c0392b;
+  --warning: #e6a817;
   --danger-bg: #fef0ef;
   --danger-border: #f5c6cb;
   --overlay: rgba(0, 0, 0, 0.4);
@@ -46,6 +47,7 @@
   --bubble-other: #2c2c2e;
   --danger: #e0483b;
   --danger-hover: #f07070;
+  --warning: #f0c040;
   --danger-bg: #2d1b1b;
   --danger-border: #5c2a2a;
   --overlay: rgba(0, 0, 0, 0.6);
@@ -933,6 +935,38 @@ body {
 
 .link-text a { color: var(--primary); text-decoration: none; }
 .link-text a:hover { text-decoration: underline; }
+
+/* ===== Search bar ===== */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--bg-nav);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.search-bar .wechat-input {
+  flex: 1;
+  background: var(--bg-input);
+}
+.search-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ===== Token budget bar ===== */
+.token-bar-wrap {
+  height: 3px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.token-bar-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+  border-radius: 0 2px 2px 0;
+}
 
 /* ===== Mobile adjustments ===== */
 @media (max-width: 768px) {

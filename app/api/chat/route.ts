@@ -13,6 +13,8 @@ interface MemMessage {
   role: string;
   content: string;
   conversationId: string;
+  swipes: string;
+  swipeId: number;
   createdAt: string;
 }
 const demoSessions = new Map<string, MemMessage[]>();
@@ -94,7 +96,7 @@ export async function GET(req: Request) {
   const messages = await db.message.findMany({
     where: { userId, characterId, conversationId },
     orderBy: { createdAt: "asc" },
-    select: { id: true, role: true, content: true, createdAt: true },
+    select: { id: true, role: true, content: true, swipes: true, swipeId: true, createdAt: true },
   });
 
   return NextResponse.json({ messages, conversationId });
@@ -146,10 +148,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { characterId, conversationId, message, temperature, maxTokens, stream } = await req.json();
+    const { characterId, conversationId, message, temperature, maxTokens, stream, regenerate, persona } = await req.json();
 
-    if (!characterId || !message) {
-      return NextResponse.json({ error: "characterId and message required" }, { status: 400 });
+    if (!characterId) {
+      return NextResponse.json({ error: "characterId required" }, { status: 400 });
+    }
+    if (!regenerate && !message) {
+      return NextResponse.json({ error: "message required" }, { status: 400 });
     }
 
     const character = getCharacter(characterId);
@@ -176,28 +181,34 @@ export async function POST(req: Request) {
       convId = conv.id;
     }
 
-    // Save user message, then load and trim history
+    // Save user message (unless regenerating), then load and trim history
     let history: { role: "user" | "assistant"; content: string }[];
 
-    if (demoSessionId) {
-      const messages = getDemoMessages(demoSessionId);
-      messages.push({
+    if (!regenerate && demoSessionId) {
+      const demoMessages = getDemoMessages(demoSessionId);
+      demoMessages.push({
         id: crypto.randomUUID(),
         role: "user",
         content: message,
         conversationId: convId,
+        swipes: "[]",
+        swipeId: 0,
         createdAt: new Date().toISOString(),
       });
-      history = messages
+    } else if (!regenerate) {
+      await db.message.create({
+        data: { userId, characterId, conversationId: convId, role: "user", content: message },
+      });
+    }
+
+    if (demoSessionId) {
+      history = getDemoMessages(demoSessionId)
         .filter(m => m.conversationId === convId)
         .map((m) => ({
           role: m.role as "user" | "assistant",
           content: m.content,
         }));
     } else {
-      await db.message.create({
-        data: { userId, characterId, conversationId: convId, role: "user", content: message },
-      });
       const rows = await db.message.findMany({
         where: { userId, characterId, conversationId: convId },
         orderBy: { createdAt: "asc" },
@@ -210,7 +221,7 @@ export async function POST(req: Request) {
 
     // Trim history to fit context window, then build prompt
     const trimmedHistory = trimHistory(history);
-    const messages = buildPrompt(character, trimmedHistory, "");
+    const promptMessages = buildPrompt(character, trimmedHistory, "", persona);
 
     if (stream) {
       const encoder = new TextEncoder();
@@ -218,7 +229,7 @@ export async function POST(req: Request) {
         async start(controller) {
           let fullReply = "";
           try {
-            for await (const chunk of aiChatStream(messages, userId, { temperature, maxTokens })) {
+            for await (const chunk of aiChatStream(promptMessages, userId, { temperature, maxTokens })) {
               fullReply += chunk;
               controller.enqueue(encoder.encode(chunk));
             }
@@ -226,17 +237,48 @@ export async function POST(req: Request) {
 
             if (demoSessionId) {
               const demoMessages = getDemoMessages(demoSessionId);
-              demoMessages.push({
-                id: crypto.randomUUID(),
-                role: "assistant",
-                content: fullReply,
-                conversationId: convId,
-                createdAt: new Date().toISOString(),
-              });
+              if (regenerate) {
+                // Add swipe to last assistant message
+                for (let i = demoMessages.length - 1; i >= 0; i--) {
+                  if (demoMessages[i].role === "assistant" && demoMessages[i].conversationId === convId) {
+                    const swipes = JSON.parse(demoMessages[i].swipes || "[]");
+                    swipes.push(fullReply);
+                    demoMessages[i].swipes = JSON.stringify(swipes);
+                    demoMessages[i].swipeId = swipes.length - 1;
+                    demoMessages[i].content = fullReply;
+                    break;
+                  }
+                }
+              } else {
+                demoMessages.push({
+                  id: crypto.randomUUID(),
+                  role: "assistant",
+                  content: fullReply,
+                  conversationId: convId,
+                  swipes: JSON.stringify([fullReply]),
+                  swipeId: 0,
+                  createdAt: new Date().toISOString(),
+                });
+              }
             } else {
-              await db.message.create({
-                data: { userId, characterId, conversationId: convId, role: "assistant", content: fullReply },
-              });
+              if (regenerate) {
+                const lastAssistant = await db.message.findFirst({
+                  where: { userId, characterId, conversationId: convId, role: "assistant" },
+                  orderBy: { createdAt: "desc" },
+                });
+                if (lastAssistant) {
+                  const swipes = JSON.parse(lastAssistant.swipes || "[]");
+                  swipes.push(fullReply);
+                  await db.message.update({
+                    where: { id: lastAssistant.id },
+                    data: { swipes: JSON.stringify(swipes), swipeId: swipes.length - 1, content: fullReply },
+                  });
+                }
+              } else {
+                await db.message.create({
+                  data: { userId, characterId, conversationId: convId, role: "assistant", content: fullReply, swipes: JSON.stringify([fullReply]), swipeId: 0 },
+                });
+              }
             }
           } catch (err: unknown) {
             controller.error(err);
@@ -252,26 +294,108 @@ export async function POST(req: Request) {
       });
     }
 
-    const reply = await aiChat(messages, userId, { temperature, maxTokens });
+    const reply = await aiChat(promptMessages, userId, { temperature, maxTokens });
 
     if (demoSessionId) {
       const demoMessages = getDemoMessages(demoSessionId);
-      demoMessages.push({
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: reply,
-        conversationId: convId,
-        createdAt: new Date().toISOString(),
-      });
+      if (regenerate) {
+        for (let i = demoMessages.length - 1; i >= 0; i--) {
+          if (demoMessages[i].role === "assistant" && demoMessages[i].conversationId === convId) {
+            const swipes = JSON.parse(demoMessages[i].swipes || "[]");
+            swipes.push(reply);
+            demoMessages[i].swipes = JSON.stringify(swipes);
+            demoMessages[i].swipeId = swipes.length - 1;
+            demoMessages[i].content = reply;
+            break;
+          }
+        }
+      } else {
+        demoMessages.push({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: reply,
+          conversationId: convId,
+          swipes: JSON.stringify([reply]),
+          swipeId: 0,
+          createdAt: new Date().toISOString(),
+        });
+      }
     } else {
-      await db.message.create({
-        data: { userId, characterId, conversationId: convId, role: "assistant", content: reply },
-      });
+      if (regenerate) {
+        const lastAssistant = await db.message.findFirst({
+          where: { userId, characterId, conversationId: convId, role: "assistant" },
+          orderBy: { createdAt: "desc" },
+        });
+        if (lastAssistant) {
+          const swipes = JSON.parse(lastAssistant.swipes || "[]");
+          swipes.push(reply);
+          await db.message.update({
+            where: { id: lastAssistant.id },
+            data: { swipes: JSON.stringify(swipes), swipeId: swipes.length - 1, content: reply },
+          });
+        }
+      } else {
+        await db.message.create({
+          data: { userId, characterId, conversationId: convId, role: "assistant", content: reply, swipes: JSON.stringify([reply]), swipeId: 0 },
+        });
+      }
     }
 
     return NextResponse.json({ reply });
   } catch (err: unknown) {
     console.error("Chat error:", err);
+    const message = err instanceof Error ? err.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  let userId: string;
+  try {
+    userId = await requireAuth();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const { messageId, conversationId, swipeId } = await req.json();
+
+    if (!messageId || swipeId === undefined) {
+      return NextResponse.json({ error: "messageId and swipeId required" }, { status: 400 });
+    }
+
+    if (userId === DEMO_USER_ID) {
+      const sessionId = await getDemoSessionId();
+      const demoMessages = getDemoMessages(sessionId);
+      const msg = demoMessages.find(m => m.id === messageId && m.conversationId === conversationId);
+      if (!msg) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      const swipes = JSON.parse(msg.swipes || "[]");
+      if (swipeId < 0 || swipeId >= swipes.length) {
+        return NextResponse.json({ error: "Invalid swipeId" }, { status: 400 });
+      }
+      msg.swipeId = swipeId;
+      msg.content = swipes[swipeId];
+      return NextResponse.json({ ok: true, content: msg.content });
+    }
+
+    const msg = await db.message.findFirst({
+      where: { id: messageId, userId, conversationId },
+    });
+    if (!msg) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const swipes = JSON.parse(msg.swipes || "[]");
+    if (swipeId < 0 || swipeId >= swipes.length) {
+      return NextResponse.json({ error: "Invalid swipeId" }, { status: 400 });
+    }
+
+    await db.message.update({
+      where: { id: messageId },
+      data: { swipeId, content: swipes[swipeId] },
+    });
+
+    return NextResponse.json({ ok: true, content: swipes[swipeId] });
+  } catch (err: unknown) {
+    console.error("PATCH swipe error:", err);
     const message = err instanceof Error ? err.message : "Internal server error";
     return NextResponse.json({ error: message }, { status: 500 });
   }

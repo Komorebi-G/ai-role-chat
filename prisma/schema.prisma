@@ -35,6 +35,8 @@ model Message {
   conversationId String
   role           String
   content        String
+  swipes         String   @default("[]") // JSON array of reply variants for assistant messages
+  swipeId        Int      @default(0)    // Index of currently selected swipe
   createdAt      DateTime @default(now())
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)

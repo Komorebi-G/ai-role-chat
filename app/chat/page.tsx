@@ -15,6 +15,8 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  swipes: string;
+  swipeId: number;
   createdAt: string;
 }
 
@@ -34,15 +36,16 @@ interface AdminUser {
 interface ChatSettings {
   temperature: number;
   maxTokens: number;
+  persona: string;
 }
 
 function loadSettings(): ChatSettings {
-  if (typeof window === "undefined") return { temperature: 0.8, maxTokens: 1024 };
+  if (typeof window === "undefined") return { temperature: 0.8, maxTokens: 1024, persona: "" };
   try {
     const stored = localStorage.getItem("chat-settings");
     if (stored) return JSON.parse(stored);
   } catch { /* ignore */ }
-  return { temperature: 0.8, maxTokens: 1024 };
+  return { temperature: 0.8, maxTokens: 1024, persona: "" };
 }
 
 function saveSettings(s: ChatSettings) {
@@ -89,9 +92,10 @@ export default function ChatPage() {
   const [settings, setSettings] = useState<ChatSettings>(loadSettings);
   const [showSettings, setShowSettings] = useState(false);
   const [showCreateChar, setShowCreateChar] = useState(false);
-  const [charForm, setCharForm] = useState({
+  const [charForm, setCharForm] = useState<Record<string, string>>({
     id: "", name: "", description: "", personality: "", scenario: "",
     first_mes: "", mes_example: "", system_prompt: "",
+    post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "",
   });
   const [charCreating, setCharCreating] = useState(false);
   const [charError, setCharError] = useState("");
@@ -100,6 +104,8 @@ export default function ChatPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
 
   // Apply theme on mount
@@ -173,7 +179,7 @@ export default function ChatPage() {
         if (cancelled) return;
         const msgs = data.messages || [];
         if (msgs.length === 0 && selectedChar.firstMessage) {
-          setMessages([{ id: "first_mes", role: "assistant", content: selectedChar.firstMessage, createdAt: new Date().toISOString() }]);
+          setMessages([{ id: "first_mes", role: "assistant", content: selectedChar.firstMessage, swipes: JSON.stringify([selectedChar.firstMessage]), swipeId: 0, createdAt: new Date().toISOString() }]);
         } else {
           setMessages(msgs);
         }
@@ -239,7 +245,7 @@ export default function ChatPage() {
     const assistantMsgId = (Date.now() + 1).toString();
     setMessages((prev) => [
       ...prev,
-      { id: userMsgId, role: "user", content: message, createdAt: new Date().toISOString() },
+      { id: userMsgId, role: "user", content: message, swipes: "[]", swipeId: 0, createdAt: new Date().toISOString() },
     ]);
 
     setLoading(true);
@@ -255,6 +261,7 @@ export default function ChatPage() {
           stream: true,
           temperature: settings.temperature,
           maxTokens: settings.maxTokens,
+          persona: settings.persona || undefined,
         }),
       });
 
@@ -285,7 +292,7 @@ export default function ChatPage() {
         if (!assistantAdded) {
           assistantAdded = true;
           setThinking(false);
-          setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: buffer, createdAt: new Date().toISOString() }]);
+          setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: buffer, swipes: "[]", swipeId: 0, createdAt: new Date().toISOString() }]);
         } else {
           setMessages((prev) => prev.map((m) => m.id === assistantMsgId ? { ...m, content: buffer } : m));
         }
@@ -346,14 +353,20 @@ export default function ChatPage() {
       const isEdit = !!editingCharId;
       const url = isEdit ? `/api/characters?id=${editingCharId}` : "/api/characters";
       const method = isEdit ? "PUT" : "POST";
-      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(charForm) });
+      const body: Record<string, unknown> = { ...charForm };
+      if (charForm.alternate_greetings) {
+        body.alternate_greetings = charForm.alternate_greetings.split("\n").map((s: string) => s.trim()).filter(Boolean);
+      } else {
+        body.alternate_greetings = [];
+      }
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok) { setCharError(data.error || (isEdit ? "Update failed" : "Create failed")); return; }
       const refresh = await fetch("/api/characters");
       if (refresh.ok) { const list = await refresh.json(); if (Array.isArray(list)) setCharacters(list); }
       setShowCreateChar(false);
       setEditingCharId(null);
-      setCharForm({ id: "", name: "", description: "", personality: "", scenario: "", first_mes: "", mes_example: "", system_prompt: "" });
+      setCharForm({ id: "", name: "", description: "", personality: "", scenario: "", first_mes: "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "" });
     } catch { setCharError("Network error"); }
     finally { setCharCreating(false); }
   }
@@ -364,12 +377,12 @@ export default function ChatPage() {
       const res = await fetch(`/api/characters?id=${char.id}`);
       if (res.ok) {
         const full = await res.json();
-        setCharForm({ id: full.id || char.id, name: full.name || char.name, description: full.description || char.description || "", personality: full.personality || "", scenario: full.scenario || "", first_mes: full.first_mes || full.firstMessage || "", mes_example: full.mes_example || "", system_prompt: full.system_prompt || "" });
+        setCharForm({ id: full.id || char.id, name: full.name || char.name, description: full.description || char.description || "", personality: full.personality || "", scenario: full.scenario || "", first_mes: full.first_mes || full.firstMessage || "", mes_example: full.mes_example || "", system_prompt: full.system_prompt || "", post_history_instructions: full.post_history_instructions || "", alternate_greetings: Array.isArray(full.alternate_greetings) ? full.alternate_greetings.join("\n") : "", creator: full.creator || "", character_version: full.character_version || "" });
       } else {
-        setCharForm({ id: char.id, name: char.name, description: char.description || "", personality: "", scenario: "", first_mes: char.firstMessage || "", mes_example: "", system_prompt: "" });
+        setCharForm({ id: char.id, name: char.name, description: char.description || "", personality: "", scenario: "", first_mes: char.firstMessage || "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "" });
       }
     } catch {
-      setCharForm({ id: char.id, name: char.name, description: char.description || "", personality: "", scenario: "", first_mes: char.firstMessage || "", mes_example: "", system_prompt: "" });
+      setCharForm({ id: char.id, name: char.name, description: char.description || "", personality: "", scenario: "", first_mes: char.firstMessage || "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "" });
     }
     setShowCreateChar(true);
     setShowMoreMenu(false);
@@ -386,6 +399,24 @@ export default function ChatPage() {
       a.href = url; a.download = `${char.id}.json`; a.click();
       URL.revokeObjectURL(url);
     } catch { setError("Export failed"); }
+  }
+
+  function handleExportJsonl() {
+    const lines = messages.map((m) => JSON.stringify({
+      role: m.role,
+      content: m.content,
+      swipes: m.swipes,
+      swipeId: m.swipeId,
+      createdAt: m.createdAt,
+    }));
+    const blob = new Blob([lines.join("\n") + "\n"], { type: "application/x-jsonlines" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `chat-${selectedChar?.id || "chat"}-${new Date().toISOString().slice(0, 10)}.jsonl`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setShowMoreMenu(false);
   }
 
   async function handleImportChar(e: React.ChangeEvent<HTMLInputElement>) {
@@ -412,11 +443,13 @@ export default function ChatPage() {
 
   async function handleRegenerate() {
     if (!selectedChar || loading) return;
+    // Find the last assistant message — we'll add a new swipe to it
     const msgs = [...messages];
-    while (msgs.length > 0 && msgs[msgs.length - 1].role === "assistant") msgs.pop();
-    if (msgs.length === 0) return;
-    const lastUserMsg = msgs[msgs.length - 1];
-    setMessages(msgs);
+    let lastAssistantIdx = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === "assistant") { lastAssistantIdx = i; break; }
+    }
+    if (lastAssistantIdx === -1) return;
 
     setLoading(true);
     setThinking(true);
@@ -425,31 +458,59 @@ export default function ChatPage() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ characterId: selectedChar.id, conversationId: activeConversationId, message: lastUserMsg.content, stream: true, temperature: settings.temperature, maxTokens: settings.maxTokens }),
+        body: JSON.stringify({ characterId: selectedChar.id, conversationId: activeConversationId, regenerate: true, stream: true, temperature: settings.temperature, maxTokens: settings.maxTokens, persona: settings.persona || undefined }),
       });
       if (res.status === 401) { setUnauthorized(true); return; }
       if (!res.ok) { const d = await res.json(); setError(d.error || "Regenerate failed"); setLoading(false); setThinking(false); return; }
       const reader = res.body?.getReader();
       if (!reader) { setError("Streaming not supported"); setLoading(false); setThinking(false); return; }
 
-      const assistantMsgId = (Date.now() + 1).toString();
       const decoder = new TextDecoder();
       let buffer = "";
-      let assistantAdded = false;
+      let thinkingOff = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        if (!assistantAdded) {
-          assistantAdded = true;
+        if (!thinkingOff) {
+          thinkingOff = true;
           setThinking(false);
-          setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: buffer, createdAt: new Date().toISOString() }]);
+          // Add new swipe — append to swipes array, set swipeId to it
+          setMessages((prev) => prev.map((m, i) => {
+            if (i !== lastAssistantIdx) return m;
+            const swipes = JSON.parse(m.swipes || "[]");
+            swipes.push(buffer);
+            return { ...m, swipes: JSON.stringify(swipes), swipeId: swipes.length - 1, content: buffer };
+          }));
         } else {
-          setMessages((prev) => prev.map((m) => m.id === assistantMsgId ? { ...m, content: buffer } : m));
+          setMessages((prev) => prev.map((m, i) => {
+            if (i !== lastAssistantIdx) return m;
+            const swipes = JSON.parse(m.swipes || "[]");
+            swipes[swipes.length - 1] = buffer;
+            return { ...m, swipes: JSON.stringify(swipes), content: buffer };
+          }));
         }
       }
     } catch { setError("Network error"); }
     finally { setLoading(false); setThinking(false); }
+  }
+
+  function handleSwipe(messageId: string, direction: "left" | "right") {
+    setMessages((prev) => prev.map((m) => {
+      if (m.id !== messageId || m.role !== "assistant") return m;
+      const swipes = JSON.parse(m.swipes || "[]");
+      if (swipes.length <= 1) return m;
+      let newIdx = m.swipeId + (direction === "right" ? 1 : -1);
+      if (newIdx < 0) newIdx = swipes.length - 1;
+      if (newIdx >= swipes.length) newIdx = 0;
+      // Persist swipe change
+      fetch("/api/chat", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId, conversationId: activeConversationId, swipeId: newIdx }),
+      }).catch(() => {});
+      return { ...m, swipeId: newIdx, content: swipes[newIdx] };
+    }));
   }
 
   function openAdmin() {
@@ -531,7 +592,13 @@ export default function ChatPage() {
                   <input type="range" min="256" max="4096" step="128" value={settings.maxTokens}
                     onChange={(e) => { const next = { ...settings, maxTokens: parseInt(e.target.value) }; setSettings(next); saveSettings(next); }} />
                 </div>
-                <button className="wechat-btn" onClick={() => { const d = { temperature: 0.8, maxTokens: 1024 }; setSettings(d); saveSettings(d); }}>Reset to Defaults</button>
+                <div className="settings-field">
+                  <label>Persona (how the AI sees you)</label>
+                  <textarea className="wechat-textarea" rows={3} value={settings.persona}
+                    placeholder="e.g. I'm a 25-year-old adventurer from the northern kingdom..."
+                    onChange={(e) => { const next = { ...settings, persona: e.target.value }; setSettings(next); saveSettings(next); }} />
+                </div>
+                <button className="wechat-btn" onClick={() => { const d = { temperature: 0.8, maxTokens: 1024, persona: "" }; setSettings(d); saveSettings(d); }}>Reset to Defaults</button>
               </div>
             </div>
           </div>
@@ -594,6 +661,30 @@ export default function ChatPage() {
                     onChange={(e) => setCharForm((f) => ({ ...f, system_prompt: e.target.value }))}
                     placeholder="Custom system instructions" />
                 </div>
+                <div className="settings-field">
+                  <label>Post-History Instructions</label>
+                  <textarea className="wechat-textarea" rows={2} value={charForm.post_history_instructions}
+                    onChange={(e) => setCharForm((f) => ({ ...f, post_history_instructions: e.target.value }))}
+                    placeholder="Instructions injected after chat history" />
+                </div>
+                <div className="settings-field">
+                  <label>Alternate Greetings (one per line)</label>
+                  <textarea className="wechat-textarea" rows={2} value={charForm.alternate_greetings}
+                    onChange={(e) => setCharForm((f) => ({ ...f, alternate_greetings: e.target.value }))}
+                    placeholder="Alt greeting 1&#10;Alt greeting 2" />
+                </div>
+                <div className="settings-field">
+                  <label>Creator</label>
+                  <input className="wechat-input" value={charForm.creator}
+                    onChange={(e) => setCharForm((f) => ({ ...f, creator: e.target.value }))}
+                    placeholder="Character creator name" />
+                </div>
+                <div className="settings-field">
+                  <label>Version</label>
+                  <input className="wechat-input" value={charForm.character_version}
+                    onChange={(e) => setCharForm((f) => ({ ...f, character_version: e.target.value }))}
+                    placeholder="1.0" />
+                </div>
                 <button className="wechat-btn wechat-btn-primary" type="submit" disabled={charCreating}>
                   {charCreating ? "Saving..." : editingCharId ? "Update Character" : "Create Character"}
                 </button>
@@ -648,6 +739,9 @@ export default function ChatPage() {
           ←
         </button>
         <span className="wechat-nav-title">{selectedChar.name}</span>
+        <button className="nav-icon-btn" onClick={() => { setShowSearch(!showSearch); setSearchQuery(""); }} aria-label="Search">
+          {showSearch ? "✕" : "🔍"}
+        </button>
         <button className="nav-icon-btn" onClick={() => setShowMoreMenu(!showMoreMenu)} aria-label="More">
           ⋯
         </button>
@@ -663,16 +757,38 @@ export default function ChatPage() {
               <button onClick={handleClearChat} disabled={clearLoading || messages.length === 0}>
                 {clearLoading ? "Clearing..." : "Clear Chat"}
               </button>
+              <button onClick={handleExportJsonl} disabled={messages.length === 0}>Export as JSONL</button>
               <button onClick={handleLogout}>Logout</button>
             </div>
           </>
         )}
       </div>
 
+      {/* Search bar */}
+      {showSearch && (
+        <div className="search-bar">
+          <input
+            className="wechat-input"
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search messages..."
+            autoFocus
+          />
+          {searchQuery && (
+            <span className="search-count">
+              {messages.filter((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase())).length} matches
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Message area */}
       <div className="wechat-messages">
         {error && <div className="wechat-error-banner">{error}</div>}
-        {messages.map((m, i, arr) => (
+        {messages
+          .filter((m) => !searchQuery || m.content.toLowerCase().includes(searchQuery.toLowerCase()))
+          .map((m, i, arr) => (
           <div key={m.id} className={`wx-msg ${m.role === "user" ? "wx-msg-self" : ""}`}>
             {m.role === "assistant" && (
               <div className="wx-avatar" style={{ background: "var(--primary)" }}>
@@ -690,6 +806,17 @@ export default function ChatPage() {
                 {m.role === "assistant" && i === arr.length - 1 && !loading && !thinking && (
                   <button className="wx-action-btn" onClick={handleRegenerate}>Regenerate</button>
                 )}
+                {m.role === "assistant" && (() => {
+                  const swipes = JSON.parse(m.swipes || "[]");
+                  if (swipes.length <= 1) return null;
+                  return (
+                    <span style={{ marginLeft: 4, fontSize: 11, color: "var(--text-muted)" }}>
+                      <button className="wx-action-btn" onClick={() => handleSwipe(m.id, "left")}>◂</button>
+                      {m.swipeId + 1}/{swipes.length}
+                      <button className="wx-action-btn" onClick={() => handleSwipe(m.id, "right")}>▸</button>
+                    </span>
+                  );
+                })()}
               </div>
             </div>
             {m.role === "user" && (
@@ -711,6 +838,20 @@ export default function ChatPage() {
         )}
         <div ref={messagesEnd} />
       </div>
+
+      {/* Token budget bar */}
+      {(() => {
+        const totalChars = messages.reduce((sum, m) => sum + m.content.length, 0);
+        const maxChars = 8000;
+        const ratio = Math.min(totalChars / maxChars, 1);
+        const pct = Math.round(ratio * 100);
+        const color = ratio > 0.85 ? "var(--danger)" : ratio > 0.6 ? "var(--warning)" : "var(--primary)";
+        return (
+          <div className="token-bar-wrap" title={`~${Math.ceil(totalChars / 4)} tokens used / ~${Math.ceil(maxChars / 4)}`}>
+            <div className="token-bar-fill" style={{ width: `${pct}%`, background: color }} />
+          </div>
+        );
+      })()}
 
       {/* Bottom input bar */}
       <form className="wechat-input-bar" onSubmit={handleSend}>
@@ -825,7 +966,13 @@ export default function ChatPage() {
                 <input type="range" min="256" max="4096" step="128" value={settings.maxTokens}
                   onChange={(e) => { const next = { ...settings, maxTokens: parseInt(e.target.value) }; setSettings(next); saveSettings(next); }} />
               </div>
-              <button className="wechat-btn wechat-btn-primary" onClick={() => { const d = { temperature: 0.8, maxTokens: 1024 }; setSettings(d); saveSettings(d); }}>Reset to Defaults</button>
+              <div className="settings-field">
+                <label>Persona (how the AI sees you)</label>
+                <textarea className="wechat-textarea" rows={3} value={settings.persona}
+                  placeholder="e.g. I'm a 25-year-old adventurer..."
+                  onChange={(e) => { const next = { ...settings, persona: e.target.value }; setSettings(next); saveSettings(next); }} />
+              </div>
+              <button className="wechat-btn wechat-btn-primary" onClick={() => { const d = { temperature: 0.8, maxTokens: 1024, persona: "" }; setSettings(d); saveSettings(d); }}>Reset to Defaults</button>
             </div>
           </div>
         </div>
@@ -887,6 +1034,30 @@ export default function ChatPage() {
                 <textarea className="wechat-textarea" rows={2} value={charForm.system_prompt}
                   onChange={(e) => setCharForm((f) => ({ ...f, system_prompt: e.target.value }))}
                   placeholder="Custom system instructions" />
+              </div>
+              <div className="settings-field">
+                <label>Post-History Instructions</label>
+                <textarea className="wechat-textarea" rows={2} value={charForm.post_history_instructions}
+                  onChange={(e) => setCharForm((f) => ({ ...f, post_history_instructions: e.target.value }))}
+                  placeholder="Instructions injected after chat history" />
+              </div>
+              <div className="settings-field">
+                <label>Alternate Greetings (one per line)</label>
+                <textarea className="wechat-textarea" rows={2} value={charForm.alternate_greetings}
+                  onChange={(e) => setCharForm((f) => ({ ...f, alternate_greetings: e.target.value }))}
+                  placeholder="Alt greeting 1&#10;Alt greeting 2" />
+              </div>
+              <div className="settings-field">
+                <label>Creator</label>
+                <input className="wechat-input" value={charForm.creator}
+                  onChange={(e) => setCharForm((f) => ({ ...f, creator: e.target.value }))}
+                  placeholder="Character creator name" />
+              </div>
+              <div className="settings-field">
+                <label>Version</label>
+                <input className="wechat-input" value={charForm.character_version}
+                  onChange={(e) => setCharForm((f) => ({ ...f, character_version: e.target.value }))}
+                  placeholder="1.0" />
               </div>
               <button className="wechat-btn wechat-btn-primary" type="submit" disabled={charCreating}>
                 {charCreating ? "Saving..." : editingCharId ? "Update Character" : "Create Character"}

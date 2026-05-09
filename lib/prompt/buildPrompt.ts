@@ -1,5 +1,6 @@
 import { Character } from "@/lib/character";
 import { ChatMessage } from "@/lib/deepseek";
+import { getActiveWorldEntries } from "@/lib/world";
 
 interface HistoryEntry {
   role: "user" | "assistant";
@@ -10,23 +11,26 @@ interface HistoryEntry {
  * Build the final messages array for the DeepSeek API.
  *
  * Prompt structure (SillyTavern-inspired layered approach):
- *   1. System layer — global rules + character system_prompt
- *   2. Character layer — name, description, personality, scenario
+ *   1. System layer — global rules + world info (before) + character system_prompt
+ *   2. Character layer — name, description, personality, scenario + world info (after)
  *   3. Example dialogue — mes_example parsed as user/assistant pairs
  *   4. Chat history — recent messages
- *   5. Current user input
+ *   5. post_history_instructions — injected after history but before user input
+ *   6. Current user input
  *
  * All layers use OpenAI-compatible messages format. No single giant string.
  */
 export function buildPrompt(
   character: Character,
   history: HistoryEntry[],
-  userMessage: string
+  userMessage: string,
+  persona?: string
 ): ChatMessage[] {
   const messages: ChatMessage[] = [];
+  const worldEntries = getActiveWorldEntries(history);
 
-  // Layer 1+2: System prompt = global rules + character card info
-  const systemContent = buildSystemContent(character);
+  // Layer 1+2: System prompt = global rules + world info + character card info
+  const systemContent = buildSystemContent(character, worldEntries.before, worldEntries.after, persona);
   messages.push({ role: "system", content: systemContent });
 
   // Layer 3: Example dialogue (if present)
@@ -42,7 +46,12 @@ export function buildPrompt(
     messages.push({ role: h.role, content: h.content });
   }
 
-  // Layer 5: Current user input (if not already in history)
+  // Layer 5: post_history_instructions (if present)
+  if (character.post_history_instructions) {
+    messages.push({ role: "system", content: character.post_history_instructions });
+  }
+
+  // Layer 6: Current user input (if not already in history)
   if (userMessage) {
     messages.push({ role: "user", content: userMessage });
   }
@@ -50,7 +59,12 @@ export function buildPrompt(
   return messages;
 }
 
-function buildSystemContent(character: Character): string {
+function buildSystemContent(
+  character: Character,
+  worldBefore: string[],
+  worldAfter: string[],
+  persona?: string
+): string {
   const parts: string[] = [];
 
   // Global rules
@@ -60,6 +74,16 @@ function buildSystemContent(character: Character): string {
     "Reply naturally and keep responses concise.",
     character.system_prompt ? "" : `You are ${character.name}.`
   );
+
+  // User persona (if set)
+  if (persona) {
+    parts.push("", `[User Persona]\n${persona}`);
+  }
+
+  // World info before character
+  for (const entry of worldBefore) {
+    parts.push(entry);
+  }
 
   // Character-specific system prompt
   if (character.system_prompt) {
@@ -74,6 +98,11 @@ function buildSystemContent(character: Character): string {
     `Personality: ${character.personality || "Not specified"}`,
     `Scenario: ${character.scenario || "Casual conversation"}`
   );
+
+  // World info after character
+  for (const entry of worldAfter) {
+    parts.push(entry);
+  }
 
   return parts.filter((p) => p !== "").join("\n");
 }

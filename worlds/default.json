@@ -1,0 +1,6 @@
+{
+  "id": "default",
+  "name": "Default World",
+  "description": "An empty starter world book. Add entries with keywords to enrich the AI's knowledge.",
+  "entries": []
+}

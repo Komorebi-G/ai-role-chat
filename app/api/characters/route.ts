@@ -56,6 +56,10 @@ export async function POST(req: Request) {
       first_mes: body.first_mes?.trim() || "",
       mes_example: body.mes_example?.trim() || "",
       system_prompt: body.system_prompt?.trim() || "",
+      post_history_instructions: body.post_history_instructions?.trim() || "",
+      alternate_greetings: Array.isArray(body.alternate_greetings) ? body.alternate_greetings : [],
+      creator: body.creator?.trim() || "",
+      character_version: body.character_version?.trim() || "",
       creator_notes: body.creator_notes?.trim() || "",
       tags: Array.isArray(body.tags) ? body.tags : [],
     };
@@ -115,6 +119,10 @@ export async function PUT(req: Request) {
       first_mes: body.first_mes?.trim() || "",
       mes_example: body.mes_example?.trim() || "",
       system_prompt: body.system_prompt?.trim() || "",
+      post_history_instructions: body.post_history_instructions?.trim() || "",
+      alternate_greetings: Array.isArray(body.alternate_greetings) ? body.alternate_greetings : [],
+      creator: body.creator?.trim() || "",
+      character_version: body.character_version?.trim() || "",
       creator_notes: body.creator_notes?.trim() || "",
       tags: Array.isArray(body.tags) ? body.tags : [],
     };
