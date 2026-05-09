@@ -23,7 +23,7 @@
 ### 中优先级
 - [ ] **Token 计数使用字符估算** — `context.ts` 用 chars/4 估算，应替换为 tiktoken 精确计算
 - [ ] **无流式输出（streaming）** — AI 回复整段返回，体验不如逐字流式输出
-- [ ] **演示账号数据多人共享** — 所有用 123 登录的人看到同一份聊天记录
+- [x] **演示账号数据多人共享** — ✅ 已隔离：`Map<sessionId, MemMessage[]>`，每个浏览器独立会话
 - [ ] **速率限制基于进程内存** — 多实例（serverless）部署时不准确
 
 ### 低优先级
@@ -50,7 +50,7 @@
 | 1 | ✅ 添加 ESLint + TypeScript type-check 脚本 | 低 | package.json, 配置文件 | `package.json`, 新增 `eslint.config.mjs` |
 | 2 | 修复 Token 估算：引入 tiktoken | 中 | `lib/chat/context.ts` | `lib/chat/context.ts`, `package.json` |
 | 3 | 添加 AI 流式输出（streaming） | 中 | 前后端 | `lib/deepseek.ts`, `lib/ai.ts`, `app/api/chat/route.ts`, `app/chat/page.tsx` |
-| 4 | 演示账号隔离：每个浏览器独立会话 | 中 | 聊天 API、前端 | `app/api/chat/route.ts`, `app/chat/page.tsx` |
+| 4 | ✅ 演示账号隔离：每个浏览器独立会话 | 中 | auth、聊天 API | `app/api/auth/login/route.ts`, `app/api/chat/route.ts` |
 | 5 | ✅ 添加 per-user 速率限制 | 低 | `lib/ai.ts` | `lib/ai.ts`, `app/api/chat/route.ts` |
 | 6 | ✅ 对话清空功能 | 低 | API + 前端 | `app/api/chat/route.ts`, `app/chat/page.tsx`, `app/globals.css` |
 | 7 | ✅ 添加基础测试框架（vitest + 单元测试） | 中 | 全局 | `package.json`, `vitest.config.ts`, `lib/**/*.test.ts` |
@@ -64,6 +64,7 @@
 | 2 | per-user 速率限制 | `lib/ai.ts`, `app/api/chat/route.ts` | ✅ lint typecheck build |
 | 3 | 对话清空功能 | `app/api/chat/route.ts`, `app/chat/page.tsx`, `app/globals.css` | ✅ lint typecheck build |
 | 4 | 添加基础测试框架（vitest + 14 单元测试） | `package.json`, `vitest.config.ts`, `lib/**/*.test.ts` | ✅ test lint typecheck build |
+| 5 | 演示账号隔离 | `app/api/auth/login/route.ts`, `app/api/chat/route.ts` | ✅ lint typecheck test build |
 
 ## 六、待确认问题
 
@@ -91,6 +92,13 @@
 - **选择任务**：添加基础测试框架（vitest）
 - **修改文件**：`package.json`（新增 test 脚本）、`vitest.config.ts`（新增）、`lib/chat/context.test.ts`（新增，6 tests）、`lib/prompt/buildPrompt.test.ts`（新增，8 tests）
 - **测试结果**：`npm run test` ✅ 14/14、`npm run lint` ✅、`npm run typecheck` ✅、`npm run build` ✅
+- **新发现问题**：无
+
+### 第 5 轮 (2026-05-09)
+- **选择任务**：演示账号隔离
+- **修改文件**：`app/api/auth/login/route.ts`（demo 登录时下发 `demo_sid` cookie）、`app/api/chat/route.ts`（`demoMessages: MemMessage[]` → `demoSessions: Map<string, MemMessage[]>`，按 `demo_sid` 隔离）
+- **改动量**：login +5 行，chat +30 行重构
+- **测试结果**：`npm run lint` ✅、`npm run typecheck` ✅、`npm run test` ✅、`npm run build` ✅
 - **新发现问题**：无
 
 ### 第 3 轮 (2026-05-09)

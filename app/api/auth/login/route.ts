@@ -14,14 +14,17 @@ export async function POST(req: Request) {
     // Demo account: bypass database
     if (username === "123" && password === "123") {
       const token = await createToken(DEMO_USER_ID);
+      const demoSessionId = crypto.randomUUID();
       const res = NextResponse.json({ ok: true, role: "user" });
-      res.cookies.set("token", token, {
+      const cookieOpts = {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        sameSite: "lax" as const,
         maxAge: 60 * 60 * 24 * 7,
         path: "/",
-      });
+      };
+      res.cookies.set("token", token, cookieOpts);
+      res.cookies.set("demo_sid", demoSessionId, cookieOpts);
       return res;
     }
 

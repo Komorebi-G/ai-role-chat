@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { requireAuth, DEMO_USER_ID } from "@/lib/auth";
 import { getCharacter } from "@/lib/character";
 import { aiChat } from "@/lib/ai";
@@ -6,14 +7,28 @@ import { buildPrompt } from "@/lib/prompt/buildPrompt";
 import { trimHistory } from "@/lib/chat/context";
 import { db } from "@/lib/db";
 
-// In-memory store for demo user (no database)
+// In-memory store for demo users, isolated by browser session
 interface MemMessage {
   id: string;
   role: string;
   content: string;
   createdAt: string;
 }
-const demoMessages: MemMessage[] = [];
+const demoSessions = new Map<string, MemMessage[]>();
+
+async function getDemoSessionId(): Promise<string> {
+  const store = await cookies();
+  return store.get("demo_sid")?.value || crypto.randomUUID();
+}
+
+function getDemoMessages(sessionId: string): MemMessage[] {
+  let messages = demoSessions.get(sessionId);
+  if (!messages) {
+    messages = [];
+    demoSessions.set(sessionId, messages);
+  }
+  return messages;
+}
 
 export async function GET(req: Request) {
   let userId: string;
@@ -31,7 +46,9 @@ export async function GET(req: Request) {
   }
 
   if (userId === DEMO_USER_ID) {
-    return NextResponse.json(demoMessages);
+    const sessionId = await getDemoSessionId();
+    const messages = getDemoMessages(sessionId);
+    return NextResponse.json(messages);
   }
 
   const messages = await db.message.findMany({
@@ -59,7 +76,9 @@ export async function DELETE(req: Request) {
   }
 
   if (userId === DEMO_USER_ID) {
-    demoMessages.length = 0;
+    const sessionId = await getDemoSessionId();
+    const messages = getDemoMessages(sessionId);
+    messages.length = 0;
     return NextResponse.json({ ok: true });
   }
 
@@ -90,17 +109,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Character not found" }, { status: 404 });
     }
 
+    // Resolve demo session ID once for this request
+    const demoSessionId = userId === DEMO_USER_ID ? await getDemoSessionId() : null;
+
     // Save user message, then load and trim history
     let history: { role: "user" | "assistant"; content: string }[];
 
-    if (userId === DEMO_USER_ID) {
-      demoMessages.push({
+    if (demoSessionId) {
+      const messages = getDemoMessages(demoSessionId);
+      messages.push({
         id: crypto.randomUUID(),
         role: "user",
         content: message,
         createdAt: new Date().toISOString(),
       });
-      history = demoMessages.map((m) => ({
+      history = messages.map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
       }));
@@ -125,7 +148,8 @@ export async function POST(req: Request) {
     const reply = await aiChat(messages, userId);
 
     // Save assistant reply
-    if (userId === DEMO_USER_ID) {
+    if (demoSessionId) {
+      const demoMessages = getDemoMessages(demoSessionId);
       demoMessages.push({
         id: crypto.randomUUID(),
         role: "assistant",
