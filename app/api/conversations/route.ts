@@ -53,7 +53,10 @@ export async function POST(req: Request) {
   }
 
   if (userId === DEMO_USER_ID) {
-    return NextResponse.json({ id: crypto.randomUUID(), title: title || "New Chat", createdAt: new Date().toISOString() });
+    const sessionId = await getDemoSessionId();
+    const conv = { id: crypto.randomUUID(), title: title || "New Chat", createdAt: new Date().toISOString() };
+    getDemoConversations(sessionId).unshift(conv);
+    return NextResponse.json(conv);
   }
 
   const conversation = await db.conversation.create({
@@ -66,4 +69,46 @@ export async function POST(req: Request) {
   });
 
   return NextResponse.json(conversation);
+}
+
+export async function PATCH(req: Request) {
+  let userId: string;
+  try {
+    userId = await requireAuth();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const { id, title } = await req.json();
+
+    if (!id || !title) {
+      return NextResponse.json({ error: "id and title required" }, { status: 400 });
+    }
+
+    const trimmed = title.trim();
+
+    if (userId === DEMO_USER_ID) {
+      const sessionId = await getDemoSessionId();
+      const convs = getDemoConversations(sessionId);
+      const conv = convs.find((c) => c.id === id);
+      if (!conv) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      conv.title = trimmed;
+      return NextResponse.json({ ok: true, title: trimmed });
+    }
+
+    const conv = await db.conversation.findFirst({ where: { id, userId } });
+    if (!conv) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    await db.conversation.update({
+      where: { id },
+      data: { title: trimmed },
+    });
+
+    return NextResponse.json({ ok: true, title: trimmed });
+  } catch (err: unknown) {
+    console.error("PATCH conversation error:", err);
+    const message = err instanceof Error ? err.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

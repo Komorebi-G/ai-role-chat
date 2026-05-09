@@ -107,6 +107,8 @@ export default function ChatPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [renamingConvId, setRenamingConvId] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
   const importFileInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
@@ -238,6 +240,30 @@ export default function ChatPage() {
     setMessages([]);
     setActiveConversationId("");
     setConversations([]);
+  }
+
+  function startRename(conv: ConversationSummary) {
+    setRenamingConvId(conv.id);
+    setRenameTitle(conv.title);
+  }
+
+  async function saveRename() {
+    if (!renamingConvId || !renameTitle.trim()) { setRenamingConvId(null); return; }
+    try {
+      const res = await fetch("/api/conversations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: renamingConvId, title: renameTitle.trim() }),
+      });
+      if (res.ok) {
+        setConversations((prev) => prev.map((c) => c.id === renamingConvId ? { ...c, title: renameTitle.trim() } : c));
+      }
+    } catch { /* ignore */ }
+    setRenamingConvId(null);
+  }
+
+  function cancelRename() {
+    setRenamingConvId(null);
   }
 
   async function handleSend(e: React.FormEvent) {
@@ -981,9 +1007,21 @@ export default function ChatPage() {
                         <div
                           key={conv.id}
                           className={`drawer-conv-item ${conv.id === activeConversationId ? "active" : ""}`}
-                          onClick={() => handleSelectConversation(conv.id)}
+                          onClick={() => renamingConvId !== conv.id && handleSelectConversation(conv.id)}
                         >
-                          <span>{conv.title}</span>
+                          {renamingConvId === conv.id ? (
+                            <input
+                              className="drawer-rename-input"
+                              value={renameTitle}
+                              onChange={(e) => setRenameTitle(e.target.value)}
+                              onBlur={saveRename}
+                              onKeyDown={(e) => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") cancelRename(); }}
+                              autoFocus
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          ) : (
+                            <span onDoubleClick={() => startRename(conv)} title="Double-click to rename">{conv.title}</span>
+                          )}
                           <span className="drawer-conv-time">{new Date(conv.createdAt).toLocaleDateString()}{(conv._count?.messages ?? 0) > 0 && ` · ${conv._count?.messages}`}</span>
                         </div>
                       ))}
