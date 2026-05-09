@@ -24,6 +24,24 @@ interface AdminUser {
   createdAt: string;
 }
 
+interface ChatSettings {
+  temperature: number;
+  maxTokens: number;
+}
+
+function loadSettings(): ChatSettings {
+  if (typeof window === "undefined") return { temperature: 0.8, maxTokens: 1024 };
+  try {
+    const stored = localStorage.getItem("chat-settings");
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
+  return { temperature: 0.8, maxTokens: 1024 };
+}
+
+function saveSettings(s: ChatSettings) {
+  try { localStorage.setItem("chat-settings", JSON.stringify(s)); } catch { /* ignore */ }
+}
+
 export default function ChatPage() {
   const router = useRouter();
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -40,6 +58,8 @@ export default function ChatPage() {
   const [adminError, setAdminError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [clearLoading, setClearLoading] = useState(false);
+  const [settings, setSettings] = useState<ChatSettings>(loadSettings);
+  const [showSettings, setShowSettings] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -126,7 +146,12 @@ export default function ChatPage() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ characterId: selectedChar.id, message }),
+        body: JSON.stringify({
+          characterId: selectedChar.id,
+          message,
+          temperature: settings.temperature,
+          maxTokens: settings.maxTokens,
+        }),
       });
 
       if (res.status === 401) {
@@ -227,9 +252,14 @@ export default function ChatPage() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <span>Characters</span>
-          <button className="logout-btn" onClick={handleLogout}>
-            Logout
-          </button>
+          <div className="sidebar-actions">
+            <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings">
+              &#9881;
+            </button>
+            <button className="logout-btn" onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
         </div>
         <div className="character-list">
           {characters.map((c) => (
@@ -297,6 +327,74 @@ export default function ChatPage() {
           <div className="placeholder">Select a character to start chatting</div>
         )}
       </main>
+
+      {/* Settings modal */}
+      {showSettings && (
+        <div className="modal-overlay" onClick={() => setShowSettings(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>AI Settings</h2>
+              <button className="modal-close" onClick={() => setShowSettings(false)}>X</button>
+            </div>
+            <div className="settings-body">
+              <div className="settings-field">
+                <label>
+                  Temperature: <strong>{settings.temperature.toFixed(1)}</strong>
+                </label>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="2.0"
+                  step="0.1"
+                  value={settings.temperature}
+                  onChange={(e) =>
+                    setSettings((s) => {
+                      const next = { ...s, temperature: parseFloat(e.target.value) };
+                      saveSettings(next);
+                      return next;
+                    })
+                  }
+                />
+                <span className="settings-hint">
+                  Lower = more focused. Higher = more creative.
+                </span>
+              </div>
+              <div className="settings-field">
+                <label>
+                  Max Tokens: <strong>{settings.maxTokens}</strong>
+                </label>
+                <input
+                  type="range"
+                  min="256"
+                  max="4096"
+                  step="128"
+                  value={settings.maxTokens}
+                  onChange={(e) =>
+                    setSettings((s) => {
+                      const next = { ...s, maxTokens: parseInt(e.target.value) };
+                      saveSettings(next);
+                      return next;
+                    })
+                  }
+                />
+                <span className="settings-hint">
+                  Maximum length of AI response (256-4096).
+                </span>
+              </div>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  const defaults = { temperature: 0.8, maxTokens: 1024 };
+                  setSettings(defaults);
+                  saveSettings(defaults);
+                }}
+              >
+                Reset to Defaults
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Admin modal */}
       {showAdmin && (

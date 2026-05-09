@@ -1,4 +1,4 @@
-import { chatWithDeepSeek, ChatMessage } from "./deepseek";
+import { chatWithDeepSeek, ChatMessage, ModelOptions } from "./deepseek";
 
 const windowMs = 60_000;
 const maxRequests = 30;
@@ -30,14 +30,18 @@ function checkRateLimit(userId: string): void {
   }
 }
 
-export async function aiChat(messages: ChatMessage[], userId: string): Promise<string> {
+export async function aiChat(
+  messages: ChatMessage[],
+  userId: string,
+  options?: ModelOptions
+): Promise<string> {
   checkRateLimit(userId);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
 
   try {
-    const reply = await chatWithDeepSeek(messages, controller.signal);
+    const reply = await chatWithDeepSeek(messages, controller.signal, options);
     return reply;
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === "AbortError") {

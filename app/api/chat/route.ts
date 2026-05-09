@@ -98,7 +98,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { characterId, message } = await req.json();
+    const { characterId, message, temperature, maxTokens } = await req.json();
 
     if (!characterId || !message) {
       return NextResponse.json({ error: "characterId and message required" }, { status: 400 });
@@ -145,7 +145,7 @@ export async function POST(req: Request) {
     const trimmedHistory = trimHistory(history);
     const messages = buildPrompt(character, trimmedHistory, "");
 
-    const reply = await aiChat(messages, userId);
+    const reply = await aiChat(messages, userId, { temperature, maxTokens });
 
     // Save assistant reply
     if (demoSessionId) {
