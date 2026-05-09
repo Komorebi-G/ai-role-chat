@@ -27,7 +27,7 @@
 - [ ] **速率限制基于进程内存** — 多实例（serverless）部署时不准确
 
 ### 低优先级
-- [ ] **无测试** — 项目完全没有测试套件（单元测试 / 集成测试）
+- [x] **无测试** — ✅ 已添加 vitest + 14 个单元测试（context.ts 6 个 + buildPrompt.ts 8 个）
 - [ ] **角色卡只能手动编辑 JSON** — 无在线导入/创建/编辑界面
 - [x] **无对话清空功能** — ✅ 已添加 `DELETE /api/chat?characterId=` + 前端 Clear 按钮
 - [ ] **不能删除单条对话、导出对话** — Clear 已做，单条删除和导出待评估
@@ -53,7 +53,7 @@
 | 4 | 演示账号隔离：每个浏览器独立会话 | 中 | 聊天 API、前端 | `app/api/chat/route.ts`, `app/chat/page.tsx` |
 | 5 | ✅ 添加 per-user 速率限制 | 低 | `lib/ai.ts` | `lib/ai.ts`, `app/api/chat/route.ts` |
 | 6 | ✅ 对话清空功能 | 低 | API + 前端 | `app/api/chat/route.ts`, `app/chat/page.tsx`, `app/globals.css` |
-| 7 | 添加基础测试框架（vitest + 单元测试） | 中 | 全局 | `package.json`, `lib/*.test.ts` |
+| 7 | ✅ 添加基础测试框架（vitest + 单元测试） | 中 | 全局 | `package.json`, `vitest.config.ts`, `lib/**/*.test.ts` |
 
 ## 五、已完成任务
 
@@ -63,6 +63,7 @@
 | 1 | ESLint flat config + TypeScript type-check 脚本 | `package.json`, `eslint.config.mjs`, `app/api/chat/route.ts`, `lib/ai.ts`, `app/page.tsx` | ✅ lint typecheck build |
 | 2 | per-user 速率限制 | `lib/ai.ts`, `app/api/chat/route.ts` | ✅ lint typecheck build |
 | 3 | 对话清空功能 | `app/api/chat/route.ts`, `app/chat/page.tsx`, `app/globals.css` | ✅ lint typecheck build |
+| 4 | 添加基础测试框架（vitest + 14 单元测试） | `package.json`, `vitest.config.ts`, `lib/**/*.test.ts` | ✅ test lint typecheck build |
 
 ## 六、待确认问题
 
@@ -84,6 +85,12 @@
 - **修改文件**：`lib/ai.ts`（单数组 → `Map<userId, number[]>`，`aiChat` 新增 `userId` 参数）、`app/api/chat/route.ts`（传入 userId）
 - **改动量**：2 处函数签名变更，~10 行核心逻辑
 - **测试结果**：`npm run lint` ✅、`npm run typecheck` ✅、`npm run build` ✅
+- **新发现问题**：无
+
+### 第 4 轮 (2026-05-09)
+- **选择任务**：添加基础测试框架（vitest）
+- **修改文件**：`package.json`（新增 test 脚本）、`vitest.config.ts`（新增）、`lib/chat/context.test.ts`（新增，6 tests）、`lib/prompt/buildPrompt.test.ts`（新增，8 tests）
+- **测试结果**：`npm run test` ✅ 14/14、`npm run lint` ✅、`npm run typecheck` ✅、`npm run build` ✅
 - **新发现问题**：无
 
 ### 第 3 轮 (2026-05-09)
