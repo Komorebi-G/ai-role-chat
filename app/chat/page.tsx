@@ -107,6 +107,7 @@ export default function ChatPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
@@ -427,6 +428,44 @@ export default function ChatPage() {
     a.click();
     URL.revokeObjectURL(url);
     setShowMoreMenu(false);
+  }
+
+  async function handleImportJsonl(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !selectedChar) return;
+    setShowMoreMenu(false);
+    try {
+      // Clear the input so the same file can be re-imported
+      if (importFileInputRef.current) importFileInputRef.current.value = "";
+
+      const text = await file.text();
+      const lines = text.trim().split("\n").filter(Boolean);
+      const messages = lines.map((line) => {
+        try { return JSON.parse(line); } catch { return null; }
+      }).filter(Boolean);
+      if (messages.length === 0) { setError("No valid messages found in file"); return; }
+
+      const res = await fetch("/api/chat/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ characterId: selectedChar.id, conversationId: activeConversationId || undefined, messages }),
+      });
+      if (!res.ok) { const d = await res.json(); setError(d.error || "Import failed"); return; }
+      const data = await res.json();
+      setError("");
+      // Reload conversations and messages
+      fetch(`/api/conversations?characterId=${selectedChar.id}`)
+        .then((r) => r.json())
+        .then((d) => { if (Array.isArray(d)) setConversations(d); })
+        .catch(() => {});
+      // Trigger message reload by toggling conversation ID
+      if (activeConversationId) {
+        const cid = activeConversationId;
+        setActiveConversationId("");
+        setTimeout(() => setActiveConversationId(cid), 50);
+      }
+      alert(`Imported ${data.imported} messages`);
+    } catch { setError("Failed to parse file"); }
   }
 
   async function handleImportChar(e: React.ChangeEvent<HTMLInputElement>) {
@@ -768,6 +807,8 @@ export default function ChatPage() {
                 {clearLoading ? "Clearing..." : "Clear Chat"}
               </button>
               <button onClick={handleExportJsonl} disabled={messages.length === 0}>Export as JSONL</button>
+              <button onClick={() => importFileInputRef.current?.click()}>Import JSONL</button>
+              <input type="file" accept=".jsonl" ref={importFileInputRef} style={{ display: "none" }} onChange={handleImportJsonl} />
               <button onClick={handleLogout}>Logout</button>
             </div>
           </>
