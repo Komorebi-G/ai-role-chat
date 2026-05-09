@@ -8,7 +8,7 @@
 
 - Next.js App Router
 - TypeScript
-- SQLite + Prisma
+- SQLite / Turso + Prisma
 - bcryptjs + jose (auth)
 - DeepSeek API (deepseek-v4-flash)
 
@@ -79,25 +79,53 @@ ai-role-chat/
 
 ## Vercel 部署
 
+Vercel 无文件系统，需要改用 Turso（云端 SQLite）作为数据库。
+
+### 1. 创建 Turso 数据库
+
 ```bash
-# 1. 安装 Vercel CLI
-npm i -g vercel
+# 安装 Turso CLI
+curl -sSfL https://get.tur.so/install.sh | bash
 
-# 2. 部署
-vercel
+# 注册并创建数据库
+turso auth signup
+turso db create ai-role-chat
 
-# 3. 配置环境变量
-# 在 Vercel Dashboard → Settings → Environment Variables 添加：
-#   DEEPSEEK_API_KEY = sk-you-key
+# 获取连接信息
+turso db show ai-role-chat --url     # → TURSO_DATABASE_URL
+turso db tokens create ai-role-chat  # → TURSO_AUTH_TOKEN
 
-# 4. 生产部署
-vercel --prod
+# 推送表结构到 Turso
+turso db shell ai-role-chat < prisma/migrations/*/migration.sql
 ```
+
+### 2. 配置 Vercel 环境变量
+
+在 Vercel Dashboard → Settings → Environment Variables 添加：
+
+| 变量名 | 值 |
+|--------|-----|
+| `DEEPSEEK_API_KEY` | `sk-you-key` |
+| `JWT_SECRET` | 随机字符串（如 `openssl rand -hex 32`） |
+| `TURSO_DATABASE_URL` | `libsql://your-db.turso.io` |
+| `TURSO_AUTH_TOKEN` | Turso 生成的 auth token |
+
+### 3. 部署
+
+```bash
+npm i -g vercel
+vercel        # 预览部署
+vercel --prod # 生产部署
+```
+
+> 本地开发继续使用 SQLite，无需配置 Turso 环境变量。
 
 ### 环境变量
 
-| 变量名 | 说明 | 位置 |
-|--------|------|------|
-| `DEEPSEEK_API_KEY` | DeepSeek API 密钥 | `.env.local`（本地）/ Vercel 环境变量（生产） |
-| `JWT_SECRET` | JWT 签名密钥 | 生产环境务必更换为随机字符串 |
-| `DATABASE_URL` | SQLite 数据库路径 | 仅本地开发使用 |
+| 变量名 | 说明 | 本地 | Vercel |
+|--------|------|------|--------|
+| `DEEPSEEK_API_KEY` | DeepSeek API 密钥 | `.env.local` | 必需 |
+| `JWT_SECRET` | JWT 签名密钥 | 默认值可用 | 必需（更换为随机串） |
+| `DATABASE_URL` | SQLite 文件路径 | `file:./dev.db` | 不需要 |
+| `TURSO_DATABASE_URL` | Turso 数据库地址 | 不需要 | 必需 |
+| `TURSO_AUTH_TOKEN` | Turso 认证令牌 | 不需要 | 必需 |
