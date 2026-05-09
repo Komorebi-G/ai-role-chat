@@ -35,3 +35,5 @@ export async function requireAuth() {
   }
   return userId;
 }
+
+export const DEMO_USER_ID = "demo";

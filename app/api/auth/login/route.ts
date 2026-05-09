@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { createToken } from "@/lib/auth";
+import { createToken, DEMO_USER_ID } from "@/lib/auth";
 
 export async function POST(req: Request) {
   try {
@@ -9,6 +9,20 @@ export async function POST(req: Request) {
 
     if (!username || !password) {
       return NextResponse.json({ error: "Username and password required" }, { status: 400 });
+    }
+
+    // Demo account: bypass database
+    if (username === "123" && password === "123") {
+      const token = await createToken(DEMO_USER_ID);
+      const res = NextResponse.json({ ok: true });
+      res.cookies.set("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 7,
+        path: "/",
+      });
+      return res;
     }
 
     const user = await db.user.findUnique({ where: { username } });
