@@ -15,6 +15,11 @@ npx vitest                     # Watch mode
 npx prisma migrate dev         # Apply pending migrations + regenerate client
 npx prisma generate            # Regenerate Prisma client only
 
+# Git workflow
+git add <files>                 # Stage specific files (never use -A blindly)
+git commit -m "..."             # Commit with descriptive message
+git push                        # Push to origin/master → Vercel auto-deploys
+
 # Turso (production database)
 turso db shell ai-role-chat ".tables"
 turso db shell ai-role-chat < prisma/migrations/*/migration.sql  # Push latest schema
