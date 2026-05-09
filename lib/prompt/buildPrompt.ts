@@ -111,12 +111,37 @@ const USER_PREFIXES = /^(?:User|用户|user|Human)$/i;
 
 /**
  * Parse mes_example into alternating user/assistant messages.
- * Each line should be in "Speaker: content" or "Speaker：content" format.
- * Lines prefixed with User/用户/Human → role "user", all else → role "assistant".
+ *
+ * Supports two formats:
+ *   1. SillyTavern standard: rounds separated by <START>
+ *      Each round is a user/assistant pair (lines with "Speaker: content" format)
+ *   2. Line-by-line: each line is "Speaker: content"
+ *
  * Falls back to a single user message if no structured format is detected.
  */
 function parseExampleDialogue(mesExample: string): ChatMessage[] {
-  const lines = mesExample.split("\n").filter((l) => l.trim());
+  // Try <START>-delimited format first (SillyTavern standard)
+  if (mesExample.includes("<START>")) {
+    const rounds = mesExample.split("<START>").map((s) => s.trim()).filter(Boolean);
+    const messages: ChatMessage[] = [];
+    for (const round of rounds) {
+      const parsed = parseLines(round);
+      messages.push(...parsed);
+    }
+    if (messages.length > 0) return messages;
+  }
+
+  // Fall back to line-by-line format
+  const lineMessages = parseLines(mesExample);
+  if (lineMessages.length > 0) return lineMessages;
+
+  // No structured format detected
+  return [{ role: "user", content: `[Example dialogue]\n${mesExample}` }];
+}
+
+/** Parse individual lines in "Speaker: content" format */
+function parseLines(text: string): ChatMessage[] {
+  const lines = text.split("\n").filter((l) => l.trim());
   const messages: ChatMessage[] = [];
 
   for (const line of lines) {
@@ -129,11 +154,6 @@ function parseExampleDialogue(mesExample: string): ChatMessage[] {
 
     const role = USER_PREFIXES.test(prefix) ? "user" : "assistant";
     messages.push({ role, content });
-  }
-
-  // If no structured format detected, wrap as a single user example
-  if (messages.length === 0) {
-    messages.push({ role: "user", content: `[Example dialogue]\n${mesExample}` });
   }
 
   return messages;

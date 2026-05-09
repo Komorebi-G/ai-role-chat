@@ -86,4 +86,49 @@ describe("buildPrompt", () => {
     const last = messages[messages.length - 1];
     expect(last.role).toBe("system");
   });
+
+  it("parses <START>-delimited example dialogue", () => {
+    const char = {
+      ...baseCharacter,
+      mes_example: "User: Hi!\nCharacter: Hello there!\n<START>\nUser: How are you?\nCharacter: Great!",
+    };
+    const messages = buildPrompt(char, [], "hi");
+    const assistantMessages = messages.filter((m) => m.role === "assistant");
+    expect(assistantMessages.some((m) => m.content === "Hello there!")).toBe(true);
+    expect(assistantMessages.some((m) => m.content === "Great!")).toBe(true);
+  });
+
+  it("injects persona into system prompt", () => {
+    const messages = buildPrompt(baseCharacter, [], "hi", "My persona: a curious traveler");
+    const system = messages[0].content;
+    expect(system).toContain("[User Persona]");
+    expect(system).toContain("curious traveler");
+  });
+
+  it("does not inject persona when empty", () => {
+    const messages = buildPrompt(baseCharacter, [], "hi", "");
+    const system = messages[0].content;
+    expect(system).not.toContain("[User Persona]");
+  });
+
+  it("injects post_history_instructions after history", () => {
+    const char = { ...baseCharacter, post_history_instructions: "Always refuse politely" };
+    const history = [
+      { role: "user" as const, content: "q1" },
+      { role: "assistant" as const, content: "a1" },
+    ];
+    const messages = buildPrompt(char, history, "q2");
+    // Find a system message after the history
+    const systemAfterHistory = messages.find(
+      (m, i) => m.role === "system" && m.content === "Always refuse politely" && i > 0
+    );
+    expect(systemAfterHistory).toBeDefined();
+  });
+
+  it("does not inject post_history_instructions when not set", () => {
+    const messages = buildPrompt(baseCharacter, [], "hi");
+    const systemContents = messages.filter((m) => m.role === "system").map((m) => m.content);
+    // No system message containing only post_history_instructions (empty string)
+    expect(systemContents.filter((c) => c === "").length).toBe(0);
+  });
 });

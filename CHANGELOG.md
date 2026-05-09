@@ -51,3 +51,33 @@
 ## Round 10 — Character Import/Export ✅
 - `app/chat/page.tsx` — handleExportChar (download JSON), handleImportChar (upload + POST)
 - `app/globals.css` — .char-admin-actions, .import-label, .import-input
+
+## Round 11 — Swipe Reply Variants ✅
+- `prisma/schema.prisma` — Message 模型添加 swipes (JSON array) + swipeId
+- `prisma/migrations/20260509174233_add_swipes/migration.sql` — 重建 Message 表
+- `app/api/chat/route.ts` — POST regenerate: true 追加新 swipe; PATCH 切换 swipeId
+- `app/chat/page.tsx` — handleSwipe 左右切换, ◂ N/M ▸ UI
+
+## Round 12 — World Info / Simplified Lorebook ✅
+- `worlds/default.json` — 空起始世界书
+- `lib/world/index.ts` — getActiveWorldEntries 关键词匹配
+- `lib/world/index.test.ts` — 8 个测试覆盖匹配、分组、禁用、窗口等
+- `lib/prompt/buildPrompt.ts` — 注入 world info 到 system prompt
+- `app/api/worlds/route.ts` — CRUD API (admin only for write)
+
+## Round 13 — Persona, Token Bar, Search, JSONL, Card Extensions ✅
+- Persona: ChatSettings.persona, buildPrompt 注入 [User Persona], 前端 textarea
+- Token bar: 消息区域顶部 3px 进度条 (绿/黄/红)
+- Search: Nav bar 搜索按钮, 过滤消息 + 匹配计数
+- JSONL Export: handleExportJsonl, "Export as JSONL" 按钮
+- Card fields: post_history_instructions, alternate_greetings, creator, character_version
+- Character create/edit modal 已添加所有新字段输入
+
+## Round 14 — Audit & Verification ✅
+- mes_example 按 <START> 分隔符解析 (SillyTavern 标准)
+- buildPrompt 新增 persona/world-info/post_history_instructions/<START> 测试 (25 tests total)
+- README.md 全面更新: 角色卡格式、世界书格式、Swipe 机制、目录结构
+- VERIFY_REPORT.md 创建: 环境、命令验证、功能验证 (56 项)
+- IMPLEMENTATION_LOG.md 创建: 实现追踪
+- TODO.md 重写为结构化审计格式
+- `app/globals.css` — .char-admin-actions, .import-label, .import-input
