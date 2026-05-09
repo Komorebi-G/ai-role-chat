@@ -7,9 +7,18 @@ import ReactMarkdown from "react-markdown";
 interface Character {
   id: string;
   name: string;
-  description: string;
-  firstMessage: string;
+  description?: string;
+  personality?: string;
+  scenario?: string;
+  firstMessage?: string;
+  mes_example?: string;
+  system_prompt?: string;
+  post_history_instructions?: string;
   alternate_greetings?: string[];
+  creator?: string;
+  character_version?: string;
+  creator_notes?: string;
+  tags?: string[];
 }
 
 interface Message {
@@ -109,6 +118,7 @@ export default function ChatPage() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [renamingConvId, setRenamingConvId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
+  const [showCharInfo, setShowCharInfo] = useState(false);
   const importFileInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
@@ -826,6 +836,7 @@ export default function ChatPage() {
             <div className="more-menu">
               <button onClick={() => { setDrawerOpen(true); setShowMoreMenu(false); }}>Conversations</button>
               <button onClick={() => { handleNewChat(); }}>New Chat</button>
+              <button onClick={() => { setShowCharInfo(true); setShowMoreMenu(false); }}>Character Info</button>
               <button onClick={() => { setShowSettings(true); setShowMoreMenu(false); }}>AI Settings</button>
               <button onClick={toggleTheme}>{theme === "light" ? "Dark Mode" : "Light Mode"}</button>
               {role === "admin" && <button onClick={() => { startEditChar(selectedChar); }}>Edit Character</button>}
@@ -1046,6 +1057,28 @@ export default function ChatPage() {
       )}
 
       {/* Modals (reused from character list view) */}
+      {showCharInfo && selectedChar && (
+        <div className="wechat-overlay" onClick={() => setShowCharInfo(false)}>
+          <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="wechat-modal-header">
+              <span>{selectedChar.name}</span>
+              <button className="wechat-modal-close" onClick={() => setShowCharInfo(false)}>×</button>
+            </div>
+            <div className="wechat-modal-body char-info-body">
+              {selectedChar.description && <div className="char-info-section"><label>Description</label><p>{selectedChar.description}</p></div>}
+              {selectedChar.personality && <div className="char-info-section"><label>Personality</label><p>{selectedChar.personality}</p></div>}
+              {selectedChar.scenario && <div className="char-info-section"><label>Scenario</label><p>{selectedChar.scenario}</p></div>}
+              {selectedChar.system_prompt && <div className="char-info-section"><label>System Prompt</label><p>{selectedChar.system_prompt}</p></div>}
+              {selectedChar.mes_example && <div className="char-info-section"><label>Example Dialogue</label><pre>{selectedChar.mes_example}</pre></div>}
+              {selectedChar.post_history_instructions && <div className="char-info-section"><label>Post-History Instructions</label><p>{selectedChar.post_history_instructions}</p></div>}
+              {selectedChar.tags && selectedChar.tags.length > 0 && <div className="char-info-section"><label>Tags</label><p>{selectedChar.tags.join(", ")}</p></div>}
+              {selectedChar.creator && <div className="char-info-section"><label>Creator</label><p>{selectedChar.creator}{selectedChar.character_version ? ` · v${selectedChar.character_version}` : ""}</p></div>}
+              {selectedChar.creator_notes && <div className="char-info-section"><label>Creator Notes</label><p>{selectedChar.creator_notes}</p></div>}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSettings && (
         <div className="wechat-overlay" onClick={() => setShowSettings(false)}>
           <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
