@@ -9,6 +9,7 @@ interface Character {
   name: string;
   description: string;
   firstMessage: string;
+  alternate_greetings?: string[];
 }
 
 interface Message {
@@ -179,7 +180,8 @@ export default function ChatPage() {
         if (cancelled) return;
         const msgs = data.messages || [];
         if (msgs.length === 0 && selectedChar.firstMessage) {
-          setMessages([{ id: "first_mes", role: "assistant", content: selectedChar.firstMessage, swipes: JSON.stringify([selectedChar.firstMessage]), swipeId: 0, createdAt: new Date().toISOString() }]);
+          const greetings = [selectedChar.firstMessage, ...(selectedChar.alternate_greetings || [])];
+          setMessages([{ id: "first_mes", role: "assistant", content: selectedChar.firstMessage, swipes: JSON.stringify(greetings), swipeId: 0, createdAt: new Date().toISOString() }]);
         } else {
           setMessages(msgs);
         }

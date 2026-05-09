@@ -1,58 +1,11 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { requireAuth, DEMO_USER_ID } from "@/lib/auth";
 import { getCharacter } from "@/lib/character";
 import { aiChat, aiChatStream } from "@/lib/ai";
 import { buildPrompt } from "@/lib/prompt/buildPrompt";
 import { trimHistory } from "@/lib/chat/context";
 import { db } from "@/lib/db";
-
-// In-memory store for demo users, isolated by browser session
-interface MemMessage {
-  id: string;
-  role: string;
-  content: string;
-  conversationId: string;
-  swipes: string;
-  swipeId: number;
-  createdAt: string;
-}
-const demoSessions = new Map<string, MemMessage[]>();
-const demoConversations = new Map<string, { id: string; title: string; createdAt: string }[]>();
-
-async function getDemoSessionId(): Promise<string> {
-  const store = await cookies();
-  return store.get("demo_sid")?.value || crypto.randomUUID();
-}
-
-function getDemoMessages(sessionId: string): MemMessage[] {
-  let messages = demoSessions.get(sessionId);
-  if (!messages) {
-    messages = [];
-    demoSessions.set(sessionId, messages);
-  }
-  return messages;
-}
-
-function getDemoConversations(sessionId: string): { id: string; title: string; createdAt: string }[] {
-  let convs = demoConversations.get(sessionId);
-  if (!convs) {
-    convs = [];
-    demoConversations.set(sessionId, convs);
-  }
-  return convs;
-}
-
-function getOrCreateDemoConversation(sessionId: string): string {
-  const convs = getDemoConversations(sessionId);
-  const conv = convs[0];
-  if (!conv) {
-    const newConv = { id: crypto.randomUUID(), title: "New Chat", createdAt: new Date().toISOString() };
-    convs.push(newConv);
-    return newConv.id;
-  }
-  return conv.id;
-}
+import { getDemoSessionId, getDemoMessages, getDemoConversations, getOrCreateDemoConversation, setDemoMessages, setDemoConversations } from "@/lib/demo-store";
 
 export async function GET(req: Request) {
   let userId: string;
@@ -122,9 +75,9 @@ export async function DELETE(req: Request) {
     const sessionId = await getDemoSessionId();
     const all = getDemoMessages(sessionId);
     const filtered = all.filter(m => m.conversationId !== conversationId);
-    demoSessions.set(sessionId, filtered);
+    setDemoMessages(sessionId, filtered);
     const convs = getDemoConversations(sessionId);
-    demoConversations.set(sessionId, convs.filter(c => c.id !== conversationId));
+    setDemoConversations(sessionId, convs.filter(c => c.id !== conversationId));
     return NextResponse.json({ ok: true });
   }
 
@@ -195,10 +148,24 @@ export async function POST(req: Request) {
         swipeId: 0,
         createdAt: new Date().toISOString(),
       });
+      // Auto-title: use first message as conversation title
+      const convs = getDemoConversations(demoSessionId);
+      const conv = convs.find(c => c.id === convId);
+      if (conv && conv.title === "New Chat") {
+        conv.title = message.slice(0, 30) + (message.length > 30 ? "..." : "");
+      }
     } else if (!regenerate) {
       await db.message.create({
         data: { userId, characterId, conversationId: convId, role: "user", content: message },
       });
+      // Auto-title: use first message as conversation title
+      const conv = await db.conversation.findUnique({ where: { id: convId } });
+      if (conv && conv.title === "New Chat") {
+        await db.conversation.update({
+          where: { id: convId },
+          data: { title: message.slice(0, 30) + (message.length > 30 ? "..." : "") },
+        });
+      }
     }
 
     if (demoSessionId) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth, DEMO_USER_ID } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getDemoSessionId, getDemoConversations } from "@/lib/demo-store";
 
 export async function GET(req: Request) {
   let userId: string;
@@ -18,7 +19,8 @@ export async function GET(req: Request) {
   }
 
   if (userId === DEMO_USER_ID) {
-    return NextResponse.json([]);
+    const sessionId = await getDemoSessionId();
+    return NextResponse.json(getDemoConversations(sessionId));
   }
 
   const conversations = await db.conversation.findMany({
