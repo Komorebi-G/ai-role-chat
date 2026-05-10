@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslation } from "@/lib/i18n";
 
 export default function RegisterPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -25,13 +27,13 @@ export default function RegisterPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Registration failed");
+        setError(data.error || t("auth.registerFailed"));
         return;
       }
 
       router.push("/chat");
     } catch {
-      setError("Network error");
+      setError(t("common.networkError"));
     } finally {
       setLoading(false);
     }
@@ -40,11 +42,11 @@ export default function RegisterPage() {
   return (
     <div className="page-center">
       <div className="card">
-        <h1>Register</h1>
+        <h1>{t("auth.register")}</h1>
         {error && <div className="error-msg">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="username">Username</label>
+            <label htmlFor="username">{t("auth.username")}</label>
             <input
               id="username"
               type="text"
@@ -55,7 +57,7 @@ export default function RegisterPage() {
             />
           </div>
           <div className="form-group">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">{t("auth.password")}</label>
             <input
               id="password"
               type="password"
@@ -66,14 +68,14 @@ export default function RegisterPage() {
               minLength={8}
               maxLength={16}
             />
-            <p className="field-hint">8-16 characters, must include both letters and numbers</p>
+            <p className="field-hint">{t("auth.passwordHint")}</p>
           </div>
           <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? "Registering..." : "Register"}
+            {loading ? t("auth.registering") : t("auth.register")}
           </button>
         </form>
         <p className="link-text">
-          Already have an account? <Link href="/login">Login</Link>
+          {t("auth.hasAccount")} <Link href="/login">{t("auth.login")}</Link>
         </p>
       </div>
     </div>

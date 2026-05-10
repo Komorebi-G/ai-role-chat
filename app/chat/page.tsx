@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
+import { useTranslation, type Locale } from "@/lib/i18n";
 
 interface Character {
   id: string;
@@ -83,6 +84,7 @@ function avatarLetter(name: string): string {
 
 export default function ChatPage() {
   const router = useRouter();
+  const { t, locale, setLocale } = useTranslation();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [selectedChar, setSelectedChar] = useState<Character | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -218,7 +220,7 @@ export default function ChatPage() {
       const res = await fetch("/api/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ characterId: selectedChar.id, title: "New Chat" }),
+        body: JSON.stringify({ characterId: selectedChar.id, title: t("conversation.newChat") }),
       });
       if (res.ok) {
         const conv = await res.json();
@@ -228,7 +230,7 @@ export default function ChatPage() {
         setError("");
         setDrawerOpen(false);
       }
-    } catch { setError("Failed to create new chat"); }
+    } catch { setError(t("chat.createChatFailed")); }
   }
 
   async function handleSelectConversation(convId: string) {
@@ -312,7 +314,7 @@ export default function ChatPage() {
       if (res.status === 401) { setUnauthorized(true); return; }
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error || "Send failed");
+        setError(data.error || t("chat.sendFailed"));
         setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
         setLoading(false);
         return;
@@ -324,7 +326,7 @@ export default function ChatPage() {
 
       const reader = res.body?.getReader();
       if (!reader) {
-        setError("Streaming not supported");
+        setError(t("chat.streamNotSupported"));
         setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
         setLoading(false);
         return;
@@ -346,7 +348,7 @@ export default function ChatPage() {
         }
       }
     } catch {
-      setError("Network error");
+      setError(t("common.networkError"));
       setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
     } finally {
       setLoading(false);
@@ -364,19 +366,19 @@ export default function ChatPage() {
     setAdminError("");
     try {
       const res = await fetch("/api/admin/users");
-      if (!res.ok) throw new Error("Failed to load users");
+      if (!res.ok) throw new Error(t("admin.loadFailed"));
       setAdminUsers(await res.json());
-    } catch { setAdminError("Failed to load users"); }
+    } catch { setAdminError(t("admin.loadFailed")); }
     finally { setAdminLoading(false); }
   }
 
   async function handleDeleteUser(userId: string) {
     try {
       const res = await fetch(`/api/admin/users/${userId}`, { method: "DELETE" });
-      if (!res.ok) { const d = await res.json(); setAdminError(d.error || "Delete failed"); return; }
+      if (!res.ok) { const d = await res.json(); setAdminError(d.error || t("admin.deleteFailed")); return; }
       setAdminUsers((prev) => prev.filter((u) => u.id !== userId));
       setDeleteConfirm(null);
-    } catch { setAdminError("Network error"); }
+    } catch { setAdminError(t("common.networkError")); }
   }
 
   async function handleClearChat() {
@@ -385,7 +387,7 @@ export default function ChatPage() {
     setError("");
     try {
       const res = await fetch(`/api/chat?characterId=${selectedChar.id}&conversationId=${activeConversationId}`, { method: "DELETE" });
-      if (!res.ok) { const d = await res.json(); setError(d.error || "Clear failed"); return; }
+      if (!res.ok) { const d = await res.json(); setError(d.error || t("chat.clearFailed")); return; }
       setMessages([]);
       setShowMoreMenu(false);
     } catch { setError("Network error"); }
@@ -394,7 +396,7 @@ export default function ChatPage() {
 
   async function handleCreateChar(e: React.FormEvent) {
     e.preventDefault();
-    if (!charForm.id || !charForm.name) { setCharError("ID and Name are required"); return; }
+    if (!charForm.id || !charForm.name) { setCharError(t("char.idRequired")); return; }
     setCharCreating(true);
     setCharError("");
     try {
@@ -414,13 +416,13 @@ export default function ChatPage() {
       }
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
-      if (!res.ok) { setCharError(data.error || (isEdit ? "Update failed" : "Create failed")); return; }
+      if (!res.ok) { setCharError(data.error || (isEdit ? t("char.updateFailed") : t("char.createFailed"))); return; }
       const refresh = await fetch("/api/characters");
       if (refresh.ok) { const list = await refresh.json(); if (Array.isArray(list)) setCharacters(list); }
       setShowCreateChar(false);
       setEditingCharId(null);
       setCharForm({ id: "", name: "", description: "", personality: "", scenario: "", first_mes: "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "", creator_notes: "", tags: "" });
-    } catch { setCharError("Network error"); }
+    } catch { setCharError(t("common.networkError")); }
     finally { setCharCreating(false); }
   }
 
@@ -444,14 +446,14 @@ export default function ChatPage() {
   async function handleExportChar(char: Character) {
     try {
       const res = await fetch(`/api/characters?id=${char.id}`);
-      if (!res.ok) { setError("Export failed"); return; }
+      if (!res.ok) { setError(t("char.exportFailed")); return; }
       const data = await res.json();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = `${char.id}.json`; a.click();
       URL.revokeObjectURL(url);
-    } catch { setError("Export failed"); }
+    } catch { setError(t("char.exportFailed")); }
   }
 
   function handleExportJsonl() {
@@ -485,14 +487,14 @@ export default function ChatPage() {
       const messages = lines.map((line) => {
         try { return JSON.parse(line); } catch { return null; }
       }).filter(Boolean);
-      if (messages.length === 0) { setError("No valid messages found in file"); return; }
+      if (messages.length === 0) { setError(t("chat.noValidMessages")); return; }
 
       const res = await fetch("/api/chat/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ characterId: selectedChar.id, conversationId: activeConversationId || undefined, messages }),
       });
-      if (!res.ok) { const d = await res.json(); setError(d.error || "Import failed"); return; }
+      if (!res.ok) { const d = await res.json(); setError(d.error || t("chat.importFailed")); return; }
       const data = await res.json();
       setError("");
       // Reload conversations and messages
@@ -506,8 +508,8 @@ export default function ChatPage() {
         setActiveConversationId("");
         setTimeout(() => setActiveConversationId(cid), 50);
       }
-      alert(`Imported ${data.imported} messages`);
-    } catch { setError("Failed to parse file"); }
+      alert(`${t("common.import")} ${data.imported} ${t("chat.importSuccess")}`);
+    } catch { setError(t("chat.importFailed")); }
   }
 
   async function handleImportChar(e: React.ChangeEvent<HTMLInputElement>) {
@@ -516,14 +518,14 @@ export default function ChatPage() {
     try {
       const text = await file.text();
       const json = JSON.parse(text);
-      if (!json.id || !json.name) { setError("Invalid character file: missing id or name"); return; }
+      if (!json.id || !json.name) { setError(t("char.idRequired")); return; }
       const res = await fetch("/api/characters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) });
       const data = await res.json();
-      if (!res.ok) { setError(data.error || "Import failed"); return; }
+      if (!res.ok) { setError(data.error || t("chat.importFailed")); return; }
       const refresh = await fetch("/api/characters");
       if (refresh.ok) { const list = await refresh.json(); if (Array.isArray(list)) setCharacters(list); }
       setError("");
-    } catch { setError("Invalid JSON file"); }
+    } catch { setError(t("chat.importFailed")); }
     e.target.value = "";
   }
 
@@ -552,7 +554,7 @@ export default function ChatPage() {
         body: JSON.stringify({ characterId: selectedChar.id, conversationId: activeConversationId, regenerate: true, stream: true, temperature: settings.temperature, maxTokens: settings.maxTokens, persona: settings.persona || undefined }),
       });
       if (res.status === 401) { setUnauthorized(true); return; }
-      if (!res.ok) { const d = await res.json(); setError(d.error || "Regenerate failed"); setLoading(false); setThinking(false); return; }
+      if (!res.ok) { const d = await res.json(); setError(d.error || t("chat.sendFailed")); setLoading(false); setThinking(false); return; }
       const reader = res.body?.getReader();
       if (!reader) { setError("Streaming not supported"); setLoading(false); setThinking(false); return; }
 
@@ -617,7 +619,7 @@ export default function ChatPage() {
     return (
       <div className="wechat-shell">
         <div className="wechat-nav">
-          <span className="wechat-nav-title">AI Role Chat</span>
+          <span className="wechat-nav-title">{t("chat.emptyTitle")}</span>
           <div className="wechat-nav-right">
             <button className="nav-icon-btn" onClick={() => { setShowSettings(true); }} title="Settings">
               &#9881;
@@ -632,7 +634,7 @@ export default function ChatPage() {
               </div>
               <div className="chat-list-info">
                 <div className="chat-list-name">{c.name}</div>
-                <div className="chat-list-preview">{c.description || c.firstMessage || "Tap to chat"}</div>
+                <div className="chat-list-preview">{c.description || c.firstMessage || t("chat.emptyHint")}</div>
               </div>
               {role === "admin" && (
                 <div className="chat-list-actions">
@@ -643,24 +645,24 @@ export default function ChatPage() {
             </div>
           ))}
           {characters.length === 0 && (
-            <div className="wechat-empty">No characters available</div>
+            <div className="wechat-empty">{t("chat.emptyConversation")}</div>
           )}
         </div>
         {/* Bottom bar for admin actions */}
         {role === "admin" && (
           <div className="wechat-list-footer">
-            <button className="wechat-footer-btn" onClick={() => setShowCreateChar(true)}>+ Create Character</button>
+            <button className="wechat-footer-btn" onClick={() => setShowCreateChar(true)}>+ {t("char.create")}</button>
             <label className="wechat-footer-btn import-label">
-              Import
+              {t("common.import")}
               <input type="file" accept=".json" className="import-input" onChange={handleImportChar} />
             </label>
-            <button className="wechat-footer-btn" onClick={openAdmin}>Users</button>
-            <button className="wechat-footer-btn" onClick={handleLogout}>Logout</button>
+            <button className="wechat-footer-btn" onClick={openAdmin}>{t("admin.users")}</button>
+            <button className="wechat-footer-btn" onClick={handleLogout}>{t("common.logout")}</button>
           </div>
         )}
         {role !== "admin" && (
           <div className="wechat-list-footer">
-            <button className="wechat-footer-btn" onClick={handleLogout}>Logout</button>
+            <button className="wechat-footer-btn" onClick={handleLogout}>{t("common.logout")}</button>
           </div>
         )}
 
@@ -669,27 +671,34 @@ export default function ChatPage() {
           <div className="wechat-overlay" onClick={() => setShowSettings(false)}>
             <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
               <div className="wechat-modal-header">
-                <span>AI Settings</span>
+                <span>{t("settings.title")}</span>
                 <button className="wechat-modal-close" onClick={() => setShowSettings(false)}>×</button>
               </div>
               <div className="wechat-modal-body">
                 <div className="settings-field">
-                  <label>Temperature: <strong>{settings.temperature.toFixed(1)}</strong></label>
+                  <label>{t("settings.temperature")}: <strong>{settings.temperature.toFixed(1)}</strong></label>
                   <input type="range" min="0.1" max="2.0" step="0.1" value={settings.temperature}
                     onChange={(e) => { const next = { ...settings, temperature: parseFloat(e.target.value) }; setSettings(next); saveSettings(next); }} />
                 </div>
                 <div className="settings-field">
-                  <label>Max Tokens: <strong>{settings.maxTokens}</strong></label>
+                  <label>{t("settings.maxTokens")}: <strong>{settings.maxTokens}</strong></label>
                   <input type="range" min="256" max="4096" step="128" value={settings.maxTokens}
                     onChange={(e) => { const next = { ...settings, maxTokens: parseInt(e.target.value) }; setSettings(next); saveSettings(next); }} />
                 </div>
                 <div className="settings-field">
-                  <label>Persona (how the AI sees you)</label>
+                  <label>{t("settings.persona")}</label>
                   <textarea className="wechat-textarea" rows={3} value={settings.persona}
-                    placeholder="e.g. I'm a 25-year-old adventurer from the northern kingdom..."
+                    placeholder={t("settings.personaHint")}
                     onChange={(e) => { const next = { ...settings, persona: e.target.value }; setSettings(next); saveSettings(next); }} />
                 </div>
-                <button className="wechat-btn" onClick={() => { const d = { temperature: 0.8, maxTokens: 1024, persona: "" }; setSettings(d); saveSettings(d); }}>Reset to Defaults</button>
+                <div className="settings-field">
+                  <label>{t("settings.language")}</label>
+                  <select className="wechat-input" value={locale} onChange={(e) => setLocale(e.target.value as Locale)}>
+                    <option value="zh-CN">{t("lang.zhCN")}</option>
+                    <option value="en">{t("lang.en")}</option>
+                  </select>
+                </div>
+                <button className="wechat-btn" onClick={() => { const d = { temperature: 0.8, maxTokens: 1024, persona: "" }; setSettings(d); saveSettings(d); }}>{t("settings.resetDefaults")}</button>
               </div>
             </div>
           </div>
@@ -699,97 +708,97 @@ export default function ChatPage() {
           <div className="wechat-overlay" onClick={() => { setShowCreateChar(false); setEditingCharId(null); }}>
             <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
               <div className="wechat-modal-header">
-                <span>{editingCharId ? "Edit Character" : "Create Character"}</span>
+                <span>{editingCharId ? t("char.editTitle") : t("char.createTitle")}</span>
                 <button className="wechat-modal-close" onClick={() => { setShowCreateChar(false); setEditingCharId(null); }}>×</button>
               </div>
               {charError && <div className="wechat-error">{charError}</div>}
               <form className="wechat-modal-body" onSubmit={handleCreateChar}>
                 <div className="settings-field">
-                  <label>ID *</label>
+                  <label>{t("char.id")} *</label>
                   <input className="wechat-input" value={charForm.id}
                     onChange={(e) => setCharForm((f) => ({ ...f, id: e.target.value }))}
                     placeholder="alice" required disabled={!!editingCharId} />
                 </div>
                 <div className="settings-field">
-                  <label>Name *</label>
+                  <label>{t("char.name")} *</label>
                   <input className="wechat-input" value={charForm.name}
                     onChange={(e) => setCharForm((f) => ({ ...f, name: e.target.value }))}
                     placeholder="Alice" required />
                 </div>
                 <div className="settings-field">
-                  <label>Description</label>
+                  <label>{t("char.description")}</label>
                   <textarea className="wechat-textarea" rows={2} value={charForm.description}
                     onChange={(e) => setCharForm((f) => ({ ...f, description: e.target.value }))}
                     placeholder="A brief description" />
                 </div>
                 <div className="settings-field">
-                  <label>Personality</label>
+                  <label>{t("char.personality")}</label>
                   <textarea className="wechat-textarea" rows={2} value={charForm.personality}
                     onChange={(e) => setCharForm((f) => ({ ...f, personality: e.target.value }))}
                     placeholder="Personality traits" />
                 </div>
                 <div className="settings-field">
-                  <label>Scenario</label>
+                  <label>{t("char.scenario")}</label>
                   <textarea className="wechat-textarea" rows={2} value={charForm.scenario}
                     onChange={(e) => setCharForm((f) => ({ ...f, scenario: e.target.value }))}
                     placeholder="Conversation scenario" />
                 </div>
                 <div className="settings-field">
-                  <label>First Message</label>
+                  <label>{t("char.firstMes")}</label>
                   <textarea className="wechat-textarea" rows={2} value={charForm.first_mes}
                     onChange={(e) => setCharForm((f) => ({ ...f, first_mes: e.target.value }))}
                     placeholder="Opening message" />
                 </div>
                 <div className="settings-field">
-                  <label>Example Dialogue</label>
+                  <label>{t("char.mesExample")}</label>
                   <textarea className="wechat-textarea" rows={2} value={charForm.mes_example}
                     onChange={(e) => setCharForm((f) => ({ ...f, mes_example: e.target.value }))}
                     placeholder="User: ...&#10;Character: ..." />
                 </div>
                 <div className="settings-field">
-                  <label>System Prompt</label>
+                  <label>{t("char.systemPrompt")}</label>
                   <textarea className="wechat-textarea" rows={2} value={charForm.system_prompt}
                     onChange={(e) => setCharForm((f) => ({ ...f, system_prompt: e.target.value }))}
                     placeholder="Custom system instructions" />
                 </div>
                 <div className="settings-field">
-                  <label>Post-History Instructions</label>
+                  <label>{t("char.postHistory")}</label>
                   <textarea className="wechat-textarea" rows={2} value={charForm.post_history_instructions}
                     onChange={(e) => setCharForm((f) => ({ ...f, post_history_instructions: e.target.value }))}
                     placeholder="Instructions injected after chat history" />
                 </div>
                 <div className="settings-field">
-                  <label>Alternate Greetings (one per line)</label>
+                  <label>{t("char.altGreetings")}</label>
                   <textarea className="wechat-textarea" rows={2} value={charForm.alternate_greetings}
                     onChange={(e) => setCharForm((f) => ({ ...f, alternate_greetings: e.target.value }))}
                     placeholder="Alt greeting 1&#10;Alt greeting 2" />
                 </div>
                 <div className="settings-field">
-                  <label>Creator</label>
+                  <label>{t("char.creator")}</label>
                   <input className="wechat-input" value={charForm.creator}
                     onChange={(e) => setCharForm((f) => ({ ...f, creator: e.target.value }))}
                     placeholder="Character creator name" />
                 </div>
                 <div className="settings-field">
-                  <label>Version</label>
+                  <label>{t("char.version")}</label>
                   <input className="wechat-input" value={charForm.character_version}
                     onChange={(e) => setCharForm((f) => ({ ...f, character_version: e.target.value }))}
                     placeholder="1.0" />
                 </div>
                 <div className="settings-field">
-                  <label>Creator Notes</label>
+                  <label>{t("char.creatorNotes")}</label>
                   <textarea className="wechat-textarea" rows={2} value={charForm.creator_notes}
                     onChange={(e) => setCharForm((f) => ({ ...f, creator_notes: e.target.value }))}
                     placeholder="Display-only notes for the creator" />
                 </div>
                 <div className="settings-field">
-                  <label>Tags (comma-separated)</label>
+                  <label>{t("char.tags")}</label>
                   <input className="wechat-input" value={charForm.tags}
                     onChange={(e) => setCharForm((f) => ({ ...f, tags: e.target.value }))}
                     placeholder="friend, fantasy, slice-of-life" />
                 </div>
                 <button className="wechat-btn wechat-btn-primary" type="submit" disabled={charCreating}>
-                  {charCreating ? "Saving..." : editingCharId ? "Update Character" : "Create Character"}
+                  {charCreating ? t("char.saving") : editingCharId ? t("char.updateBtn") : t("char.createBtn")}
                 </button>
               </form>
             </div>
@@ -800,11 +809,11 @@ export default function ChatPage() {
           <div className="wechat-overlay" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>
             <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
               <div className="wechat-modal-header">
-                <span>User Management</span>
+                <span>{t("admin.title")}</span>
                 <button className="wechat-modal-close" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>×</button>
               </div>
               {adminError && <div className="wechat-error">{adminError}</div>}
-              {adminLoading ? <p className="wechat-loading">Loading...</p> : (
+              {adminLoading ? <p className="wechat-loading">{t("common.loading")}</p> : (
                 <div className="wechat-user-list">
                   {adminUsers.map((u) => (
                     <div key={u.id} className="wechat-user-row">
@@ -815,11 +824,11 @@ export default function ChatPage() {
                       <div>
                         {deleteConfirm === u.id ? (
                           <span className="confirm-group">
-                            <button className="mini-btn danger" onClick={() => handleDeleteUser(u.id)}>Confirm</button>
-                            <button className="mini-btn" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+                            <button className="mini-btn danger" onClick={() => handleDeleteUser(u.id)}>{t("common.confirm")}</button>
+                            <button className="mini-btn" onClick={() => setDeleteConfirm(null)}>{t("common.cancel")}</button>
                           </span>
                         ) : (
-                          <button className="mini-btn danger-outline" onClick={() => setDeleteConfirm(u.id)} disabled={u.id === "demo"}>Delete</button>
+                          <button className="mini-btn danger-outline" onClick={() => setDeleteConfirm(u.id)} disabled={u.id === "demo"}>{t("common.delete")}</button>
                         )}
                       </div>
                     </div>
@@ -852,19 +861,19 @@ export default function ChatPage() {
           <>
             <div className="more-menu-overlay" onClick={() => setShowMoreMenu(false)} />
             <div className="more-menu">
-              <button onClick={() => { setDrawerOpen(true); setShowMoreMenu(false); }}>Conversations</button>
-              <button onClick={() => { handleNewChat(); }}>New Chat</button>
-              <button onClick={() => { setShowCharInfo(true); setShowMoreMenu(false); }}>Character Info</button>
-              <button onClick={() => { setShowSettings(true); setShowMoreMenu(false); }}>AI Settings</button>
-              <button onClick={toggleTheme}>{theme === "light" ? "Dark Mode" : "Light Mode"}</button>
-              {role === "admin" && <button onClick={() => { startEditChar(selectedChar); }}>Edit Character</button>}
+              <button onClick={() => { setDrawerOpen(true); setShowMoreMenu(false); }}>{t("conversation.title")}</button>
+              <button onClick={() => { handleNewChat(); }}>{t("chat.newChat")}</button>
+              <button onClick={() => { setShowCharInfo(true); setShowMoreMenu(false); }}>{t("chat.characterInfo")}</button>
+              <button onClick={() => { setShowSettings(true); setShowMoreMenu(false); }}>{t("settings.title")}</button>
+              <button onClick={toggleTheme}>{theme === "light" ? t("settings.themeDark") : t("settings.themeLight")}</button>
+              {role === "admin" && <button onClick={() => { startEditChar(selectedChar); }}>{t("char.edit")}</button>}
               <button onClick={handleClearChat} disabled={clearLoading || messages.length === 0}>
-                {clearLoading ? "Clearing..." : "Clear Chat"}
+                {clearLoading ? t("common.loading") : t("chat.clearChat")}
               </button>
-              <button onClick={handleExportJsonl} disabled={messages.length === 0}>Export as JSONL</button>
-              <button onClick={() => importFileInputRef.current?.click()}>Import JSONL</button>
+              <button onClick={handleExportJsonl} disabled={messages.length === 0}>{t("common.export")} JSONL</button>
+              <button onClick={() => importFileInputRef.current?.click()}>{t("common.import")} JSONL</button>
               <input type="file" accept=".jsonl" ref={importFileInputRef} style={{ display: "none" }} onChange={handleImportJsonl} />
-              <button onClick={handleLogout}>Logout</button>
+              <button onClick={handleLogout}>{t("common.logout")}</button>
             </div>
           </>
         )}
@@ -878,12 +887,12 @@ export default function ChatPage() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search messages..."
+            placeholder={t("chat.searchPlaceholder")}
             autoFocus
           />
           {searchQuery && (
             <span className="search-count">
-              {messages.filter((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase())).length} matches
+              {messages.filter((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase())).length} {t("chat.messages")}
             </span>
           )}
         </div>
@@ -907,10 +916,10 @@ export default function ChatPage() {
               </div>
               <div className="wx-msg-actions">
                 <button className="wx-action-btn" onClick={() => handleCopy(m.content, m.id)}>
-                  {copiedId === m.id ? "Copied!" : "Copy"}
+                  {copiedId === m.id ? t("chat.copiedMessage") : t("chat.copyMessage")}
                 </button>
                 {m.role === "assistant" && i === arr.length - 1 && !loading && !thinking && (
-                  <button className="wx-action-btn" onClick={handleRegenerate}>Regenerate</button>
+                  <button className="wx-action-btn" onClick={handleRegenerate}>{t("chat.regenerate")}</button>
                 )}
                 {m.role === "assistant" && (() => {
                   const swipes = JSON.parse(m.swipes || "[]");
@@ -927,7 +936,7 @@ export default function ChatPage() {
             </div>
             {m.role === "user" && (
               <div className="wx-avatar wx-avatar-self" style={{ background: "var(--wechat-green, #07c160)" }}>
-                Me
+                {t("common.yes")}
               </div>
             )}
           </div>
@@ -938,7 +947,7 @@ export default function ChatPage() {
               {avatarLetter(selectedChar.name)}
             </div>
             <div className="wx-bubble wx-typing">
-              <span className="loading-dots">Thinking</span>
+              <span className="loading-dots">{t("chat.thinking")}</span>
             </div>
           </div>
         )}
@@ -978,7 +987,7 @@ export default function ChatPage() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message..."
+          placeholder={t("chat.inputPlaceholder")}
           disabled={loading}
         />
         <button type="button" className="input-tool-btn" title="Emoji" aria-label="Emoji">
@@ -986,7 +995,7 @@ export default function ChatPage() {
         </button>
         {input.trim() ? (
           <button type="submit" className="input-send-btn" disabled={loading}>
-            Send
+            {t("chat.send")}
           </button>
         ) : (
           <button type="button" className="input-tool-btn" title="More" aria-label="More">
@@ -1001,7 +1010,7 @@ export default function ChatPage() {
           <div className="wechat-drawer-overlay" onClick={() => setDrawerOpen(false)} />
           <div className="wechat-drawer">
             <div className="wechat-drawer-header">
-              <span>Characters</span>
+              <span>{t("chat.selectCharacter")}</span>
               <div className="sidebar-actions">
                 <button className="icon-btn" onClick={toggleTheme} title="Toggle theme">
                   {theme === "light" ? "☽" : "☀"}
@@ -1054,7 +1063,7 @@ export default function ChatPage() {
                           <span className="drawer-conv-time">{new Date(conv.createdAt).toLocaleDateString()}{(conv._count?.messages ?? 0) > 0 && ` · ${conv._count?.messages}`}</span>
                         </div>
                       ))}
-                      <button className="drawer-new-chat-btn" onClick={handleNewChat}>+ New Chat</button>
+                      <button className="drawer-new-chat-btn" onClick={handleNewChat}>+ {t("chat.newChat")}</button>
                     </div>
                   )}
                 </div>
@@ -1062,12 +1071,12 @@ export default function ChatPage() {
             </div>
             {role === "admin" && (
               <div className="wechat-drawer-footer">
-                <button className="wechat-footer-btn" onClick={() => setShowCreateChar(true)}>+ Create Character</button>
+                <button className="wechat-footer-btn" onClick={() => setShowCreateChar(true)}>+ {t("char.create")}</button>
                 <label className="wechat-footer-btn import-label">
                   Import
                   <input type="file" accept=".json" className="import-input" onChange={handleImportChar} />
                 </label>
-                <button className="wechat-footer-btn" onClick={openAdmin}>Users</button>
+                <button className="wechat-footer-btn" onClick={openAdmin}>{t("admin.users")}</button>
               </div>
             )}
           </div>
@@ -1083,15 +1092,15 @@ export default function ChatPage() {
               <button className="wechat-modal-close" onClick={() => setShowCharInfo(false)}>×</button>
             </div>
             <div className="wechat-modal-body char-info-body">
-              {selectedChar.description && <div className="char-info-section"><label>Description</label><p>{selectedChar.description}</p></div>}
-              {selectedChar.personality && <div className="char-info-section"><label>Personality</label><p>{selectedChar.personality}</p></div>}
-              {selectedChar.scenario && <div className="char-info-section"><label>Scenario</label><p>{selectedChar.scenario}</p></div>}
-              {selectedChar.system_prompt && <div className="char-info-section"><label>System Prompt</label><p>{selectedChar.system_prompt}</p></div>}
-              {selectedChar.mes_example && <div className="char-info-section"><label>Example Dialogue</label><pre>{selectedChar.mes_example}</pre></div>}
-              {selectedChar.post_history_instructions && <div className="char-info-section"><label>Post-History Instructions</label><p>{selectedChar.post_history_instructions}</p></div>}
-              {selectedChar.tags && selectedChar.tags.length > 0 && <div className="char-info-section"><label>Tags</label><p>{selectedChar.tags.join(", ")}</p></div>}
-              {selectedChar.creator && <div className="char-info-section"><label>Creator</label><p>{selectedChar.creator}{selectedChar.character_version ? ` · v${selectedChar.character_version}` : ""}</p></div>}
-              {selectedChar.creator_notes && <div className="char-info-section"><label>Creator Notes</label><p>{selectedChar.creator_notes}</p></div>}
+              {selectedChar.description && <div className="char-info-section"><label>{t("charInfo.description")}</label><p>{selectedChar.description}</p></div>}
+              {selectedChar.personality && <div className="char-info-section"><label>{t("charInfo.personality")}</label><p>{selectedChar.personality}</p></div>}
+              {selectedChar.scenario && <div className="char-info-section"><label>{t("charInfo.scenario")}</label><p>{selectedChar.scenario}</p></div>}
+              {selectedChar.system_prompt && <div className="char-info-section"><label>{t("charInfo.systemPrompt")}</label><p>{selectedChar.system_prompt}</p></div>}
+              {selectedChar.mes_example && <div className="char-info-section"><label>{t("charInfo.mesExample")}</label><pre>{selectedChar.mes_example}</pre></div>}
+              {selectedChar.post_history_instructions && <div className="char-info-section"><label>{t("charInfo.postHistory")}</label><p>{selectedChar.post_history_instructions}</p></div>}
+              {selectedChar.tags && selectedChar.tags.length > 0 && <div className="char-info-section"><label>{t("charInfo.tags")}</label><p>{selectedChar.tags.join(", ")}</p></div>}
+              {selectedChar.creator && <div className="char-info-section"><label>{t("charInfo.creator")}</label><p>{selectedChar.creator}{selectedChar.character_version ? ` · v${selectedChar.character_version}` : ""}</p></div>}
+              {selectedChar.creator_notes && <div className="char-info-section"><label>{t("charInfo.creatorNotes")}</label><p>{selectedChar.creator_notes}</p></div>}
             </div>
           </div>
         </div>
@@ -1101,27 +1110,34 @@ export default function ChatPage() {
         <div className="wechat-overlay" onClick={() => setShowSettings(false)}>
           <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
             <div className="wechat-modal-header">
-              <span>AI Settings</span>
+              <span>{t("settings.title")}</span>
               <button className="wechat-modal-close" onClick={() => setShowSettings(false)}>×</button>
             </div>
             <div className="wechat-modal-body">
               <div className="settings-field">
-                <label>Temperature: <strong>{settings.temperature.toFixed(1)}</strong></label>
+                <label>{t("settings.temperature")}: <strong>{settings.temperature.toFixed(1)}</strong></label>
                 <input type="range" min="0.1" max="2.0" step="0.1" value={settings.temperature}
                   onChange={(e) => { const next = { ...settings, temperature: parseFloat(e.target.value) }; setSettings(next); saveSettings(next); }} />
               </div>
               <div className="settings-field">
-                <label>Max Tokens: <strong>{settings.maxTokens}</strong></label>
+                <label>{t("settings.maxTokens")}: <strong>{settings.maxTokens}</strong></label>
                 <input type="range" min="256" max="4096" step="128" value={settings.maxTokens}
                   onChange={(e) => { const next = { ...settings, maxTokens: parseInt(e.target.value) }; setSettings(next); saveSettings(next); }} />
               </div>
               <div className="settings-field">
-                <label>Persona (how the AI sees you)</label>
+                <label>{t("settings.persona")}</label>
                 <textarea className="wechat-textarea" rows={3} value={settings.persona}
-                  placeholder="e.g. I'm a 25-year-old adventurer..."
+                  placeholder={t("settings.personaHint")}
                   onChange={(e) => { const next = { ...settings, persona: e.target.value }; setSettings(next); saveSettings(next); }} />
               </div>
-              <button className="wechat-btn wechat-btn-primary" onClick={() => { const d = { temperature: 0.8, maxTokens: 1024, persona: "" }; setSettings(d); saveSettings(d); }}>Reset to Defaults</button>
+              <div className="settings-field">
+                <label>{t("settings.language")}</label>
+                <select className="wechat-input" value={locale} onChange={(e) => setLocale(e.target.value as Locale)}>
+                  <option value="zh-CN">{t("lang.zhCN")}</option>
+                  <option value="en">{t("lang.en")}</option>
+                </select>
+              </div>
+              <button className="wechat-btn wechat-btn-primary" onClick={() => { const d = { temperature: 0.8, maxTokens: 1024, persona: "" }; setSettings(d); saveSettings(d); }}>{t("settings.resetDefaults")}</button>
             </div>
           </div>
         </div>
@@ -1131,7 +1147,7 @@ export default function ChatPage() {
         <div className="wechat-overlay" onClick={() => { setShowCreateChar(false); setEditingCharId(null); }}>
           <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
             <div className="wechat-modal-header">
-              <span>{editingCharId ? "Edit Character" : "Create Character"}</span>
+              <span>{editingCharId ? t("char.editTitle") : t("char.createTitle")}</span>
               <button className="wechat-modal-close" onClick={() => { setShowCreateChar(false); setEditingCharId(null); }}>×</button>
             </div>
             {charError && <div className="wechat-error">{charError}</div>}
@@ -1221,7 +1237,7 @@ export default function ChatPage() {
                   placeholder="friend, fantasy, slice-of-life" />
               </div>
               <button className="wechat-btn wechat-btn-primary" type="submit" disabled={charCreating}>
-                {charCreating ? "Saving..." : editingCharId ? "Update Character" : "Create Character"}
+                {charCreating ? t("char.saving") : editingCharId ? t("char.updateBtn") : t("char.createBtn")}
               </button>
             </form>
           </div>
@@ -1232,11 +1248,11 @@ export default function ChatPage() {
         <div className="wechat-overlay" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>
           <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
             <div className="wechat-modal-header">
-              <span>User Management</span>
+              <span>{t("admin.title")}</span>
               <button className="wechat-modal-close" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>×</button>
             </div>
             {adminError && <div className="wechat-error">{adminError}</div>}
-            {adminLoading ? <p className="wechat-loading">Loading...</p> : (
+            {adminLoading ? <p className="wechat-loading">{t("common.loading")}</p> : (
               <div className="wechat-user-list">
                 {adminUsers.map((u) => (
                   <div key={u.id} className="wechat-user-row">
@@ -1247,11 +1263,11 @@ export default function ChatPage() {
                     <div>
                       {deleteConfirm === u.id ? (
                         <span className="confirm-group">
-                          <button className="mini-btn danger" onClick={() => handleDeleteUser(u.id)}>Confirm</button>
-                          <button className="mini-btn" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+                          <button className="mini-btn danger" onClick={() => handleDeleteUser(u.id)}>{t("common.confirm")}</button>
+                          <button className="mini-btn" onClick={() => setDeleteConfirm(null)}>{t("common.cancel")}</button>
                         </span>
                       ) : (
-                        <button className="mini-btn danger-outline" onClick={() => setDeleteConfirm(u.id)} disabled={u.id === "demo"}>Delete</button>
+                        <button className="mini-btn danger-outline" onClick={() => setDeleteConfirm(u.id)} disabled={u.id === "demo"}>{t("common.delete")}</button>
                       )}
                     </div>
                   </div>

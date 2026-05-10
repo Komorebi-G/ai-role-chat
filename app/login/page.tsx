@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslation } from "@/lib/i18n";
 
 export default function LoginPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -25,13 +27,13 @@ export default function LoginPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Login failed");
+        setError(data.error || t("auth.loginFailed"));
         return;
       }
 
       router.push("/chat");
     } catch {
-      setError("Network error");
+      setError(t("common.networkError"));
     } finally {
       setLoading(false);
     }
@@ -40,11 +42,11 @@ export default function LoginPage() {
   return (
     <div className="page-center">
       <div className="card">
-        <h1>Login</h1>
+        <h1>{t("auth.login")}</h1>
         {error && <div className="error-msg">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="username">Username</label>
+            <label htmlFor="username">{t("auth.username")}</label>
             <input
               id="username"
               type="text"
@@ -55,7 +57,7 @@ export default function LoginPage() {
             />
           </div>
           <div className="form-group">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">{t("auth.password")}</label>
             <input
               id="password"
               type="password"
@@ -66,11 +68,11 @@ export default function LoginPage() {
             />
           </div>
           <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? "Logging in..." : "Login"}
+            {loading ? t("auth.loggingIn") : t("auth.login")}
           </button>
         </form>
         <p className="link-text">
-          Don&apos;t have an account? <Link href="/register">Register</Link>
+          {t("auth.noAccount")} <Link href="/register">{t("auth.register")}</Link>
         </p>
       </div>
     </div>
