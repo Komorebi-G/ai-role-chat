@@ -16,7 +16,10 @@ if (!tursoUrl || !tursoToken) {
 
 const client = createClient({ url: tursoUrl, authToken: tursoToken });
 
-try {
+// 60-second timeout for the migration run (Vercel build has ~5 min total)
+const MIGRATE_TIMEOUT_MS = 60_000;
+
+async function runMigrations() {
   // Ensure _prisma_migrations table exists
   await client.execute(`
     CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
@@ -67,6 +70,13 @@ try {
 
     console.log(`[migrate-turso] Migration ${migrationName} applied successfully`);
   }
+}
+
+try {
+  await Promise.race([
+    runMigrations(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`Migration timed out after ${MIGRATE_TIMEOUT_MS / 1000}s`)), MIGRATE_TIMEOUT_MS)),
+  ]);
 } catch (err) {
   console.error("[migrate-turso] Failed:", err);
   process.exit(1);
