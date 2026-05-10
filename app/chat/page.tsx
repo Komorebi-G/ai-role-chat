@@ -108,6 +108,7 @@ export default function ChatPage() {
     id: "", name: "", description: "", personality: "", scenario: "",
     first_mes: "", mes_example: "", system_prompt: "",
     post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "",
+    creator_notes: "", tags: "",
   });
   const [charCreating, setCharCreating] = useState(false);
   const [charError, setCharError] = useState("");
@@ -406,6 +407,11 @@ export default function ChatPage() {
       } else {
         body.alternate_greetings = [];
       }
+      if (charForm.tags) {
+        body.tags = charForm.tags.split(",").map((s: string) => s.trim()).filter(Boolean);
+      } else {
+        body.tags = [];
+      }
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok) { setCharError(data.error || (isEdit ? "Update failed" : "Create failed")); return; }
@@ -413,7 +419,7 @@ export default function ChatPage() {
       if (refresh.ok) { const list = await refresh.json(); if (Array.isArray(list)) setCharacters(list); }
       setShowCreateChar(false);
       setEditingCharId(null);
-      setCharForm({ id: "", name: "", description: "", personality: "", scenario: "", first_mes: "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "" });
+      setCharForm({ id: "", name: "", description: "", personality: "", scenario: "", first_mes: "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "", creator_notes: "", tags: "" });
     } catch { setCharError("Network error"); }
     finally { setCharCreating(false); }
   }
@@ -424,12 +430,12 @@ export default function ChatPage() {
       const res = await fetch(`/api/characters?id=${char.id}`);
       if (res.ok) {
         const full = await res.json();
-        setCharForm({ id: full.id || char.id, name: full.name || char.name, description: full.description || char.description || "", personality: full.personality || "", scenario: full.scenario || "", first_mes: full.first_mes || full.firstMessage || "", mes_example: full.mes_example || "", system_prompt: full.system_prompt || "", post_history_instructions: full.post_history_instructions || "", alternate_greetings: Array.isArray(full.alternate_greetings) ? full.alternate_greetings.join("\n") : "", creator: full.creator || "", character_version: full.character_version || "" });
+        setCharForm({ id: full.id || char.id, name: full.name || char.name, description: full.description || char.description || "", personality: full.personality || "", scenario: full.scenario || "", first_mes: full.first_mes || full.firstMessage || "", mes_example: full.mes_example || "", system_prompt: full.system_prompt || "", post_history_instructions: full.post_history_instructions || "", alternate_greetings: Array.isArray(full.alternate_greetings) ? full.alternate_greetings.join("\n") : "", creator: full.creator || "", character_version: full.character_version || "", creator_notes: full.creator_notes || "", tags: Array.isArray(full.tags) ? full.tags.join(", ") : "" });
       } else {
-        setCharForm({ id: char.id, name: char.name, description: char.description || "", personality: "", scenario: "", first_mes: char.firstMessage || "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "" });
+        setCharForm({ id: char.id, name: char.name, description: char.description || "", personality: "", scenario: "", first_mes: char.firstMessage || "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "", creator_notes: "", tags: "" });
       }
     } catch {
-      setCharForm({ id: char.id, name: char.name, description: char.description || "", personality: "", scenario: "", first_mes: char.firstMessage || "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "" });
+      setCharForm({ id: char.id, name: char.name, description: char.description || "", personality: "", scenario: "", first_mes: char.firstMessage || "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "", creator_notes: "", tags: "" });
     }
     setShowCreateChar(true);
     setShowMoreMenu(false);
@@ -769,6 +775,18 @@ export default function ChatPage() {
                   <input className="wechat-input" value={charForm.character_version}
                     onChange={(e) => setCharForm((f) => ({ ...f, character_version: e.target.value }))}
                     placeholder="1.0" />
+                </div>
+                <div className="settings-field">
+                  <label>Creator Notes</label>
+                  <textarea className="wechat-textarea" rows={2} value={charForm.creator_notes}
+                    onChange={(e) => setCharForm((f) => ({ ...f, creator_notes: e.target.value }))}
+                    placeholder="Display-only notes for the creator" />
+                </div>
+                <div className="settings-field">
+                  <label>Tags (comma-separated)</label>
+                  <input className="wechat-input" value={charForm.tags}
+                    onChange={(e) => setCharForm((f) => ({ ...f, tags: e.target.value }))}
+                    placeholder="friend, fantasy, slice-of-life" />
                 </div>
                 <button className="wechat-btn wechat-btn-primary" type="submit" disabled={charCreating}>
                   {charCreating ? "Saving..." : editingCharId ? "Update Character" : "Create Character"}
@@ -1189,6 +1207,18 @@ export default function ChatPage() {
                 <input className="wechat-input" value={charForm.character_version}
                   onChange={(e) => setCharForm((f) => ({ ...f, character_version: e.target.value }))}
                   placeholder="1.0" />
+              </div>
+              <div className="settings-field">
+                <label>Creator Notes</label>
+                <textarea className="wechat-textarea" rows={2} value={charForm.creator_notes}
+                  onChange={(e) => setCharForm((f) => ({ ...f, creator_notes: e.target.value }))}
+                  placeholder="Display-only notes for the creator" />
+              </div>
+              <div className="settings-field">
+                <label>Tags (comma-separated)</label>
+                <input className="wechat-input" value={charForm.tags}
+                  onChange={(e) => setCharForm((f) => ({ ...f, tags: e.target.value }))}
+                  placeholder="friend, fantasy, slice-of-life" />
               </div>
               <button className="wechat-btn wechat-btn-primary" type="submit" disabled={charCreating}>
                 {charCreating ? "Saving..." : editingCharId ? "Update Character" : "Create Character"}

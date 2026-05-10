@@ -110,27 +110,31 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Character not found" }, { status: 404 });
     }
 
-    const character = {
+    // Read existing file and merge to prevent data loss from partial updates
+    const existingRaw = fs.readFileSync(filepath, "utf-8");
+    const existing = JSON.parse(existingRaw);
+
+    const merged = {
       id: characterId,
-      name: body.name.trim(),
-      description: body.description?.trim() || "",
-      personality: body.personality?.trim() || "",
-      scenario: body.scenario?.trim() || "",
-      first_mes: body.first_mes?.trim() || "",
-      mes_example: body.mes_example?.trim() || "",
-      system_prompt: body.system_prompt?.trim() || "",
-      post_history_instructions: body.post_history_instructions?.trim() || "",
-      alternate_greetings: Array.isArray(body.alternate_greetings) ? body.alternate_greetings : [],
-      creator: body.creator?.trim() || "",
-      character_version: body.character_version?.trim() || "",
-      creator_notes: body.creator_notes?.trim() || "",
-      tags: Array.isArray(body.tags) ? body.tags : [],
+      name: body.name?.trim() || existing.name || "",
+      description: body.description?.trim() ?? existing.description ?? "",
+      personality: body.personality?.trim() ?? existing.personality ?? "",
+      scenario: body.scenario?.trim() ?? existing.scenario ?? "",
+      first_mes: body.first_mes?.trim() ?? existing.first_mes ?? existing.firstMessage ?? "",
+      mes_example: body.mes_example?.trim() ?? existing.mes_example ?? "",
+      system_prompt: body.system_prompt?.trim() ?? existing.system_prompt ?? "",
+      post_history_instructions: body.post_history_instructions?.trim() ?? existing.post_history_instructions ?? "",
+      alternate_greetings: Array.isArray(body.alternate_greetings) ? body.alternate_greetings : (existing.alternate_greetings || []),
+      creator: body.creator?.trim() ?? existing.creator ?? "",
+      character_version: body.character_version?.trim() ?? existing.character_version ?? "",
+      creator_notes: body.creator_notes?.trim() ?? existing.creator_notes ?? "",
+      tags: Array.isArray(body.tags) ? body.tags : (existing.tags || []),
     };
 
-    fs.writeFileSync(filepath, JSON.stringify(character, null, 2), "utf-8");
+    fs.writeFileSync(filepath, JSON.stringify(merged, null, 2), "utf-8");
     reloadCharacters();
 
-    return NextResponse.json(character);
+    return NextResponse.json(merged);
   } catch (err) {
     console.error("Update character error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
