@@ -278,3 +278,5 @@
 4. **[✅ P1]** 更新 CHANGELOG — Rounds 11-14
 5. **[✅ P2]** 添加 mes_example 的 `<START>` 解析测试 — buildPrompt.test.ts
 6. **[⏳ P2]** JSONL 导出添加 metadata header — 未实现, 当前仅有消息数据
+7. **[✅ P0]** 修复 Vercel 构建 "table already exists" 错误 — migrate-turso.mjs 添加 schema snapshot 检测 (`isMigrationAlreadyApplied`), 通过查询 sqlite_master 和 pragma_table_info 判断迁移是否已生效
+8. **[✅ P0]** 修复 Vercel 构建 migration script 无超时挂起 — migrate-turso.mjs 添加 60 秒 Promise.race 超时
