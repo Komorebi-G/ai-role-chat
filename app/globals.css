@@ -334,7 +334,7 @@ body {
 }
 
 .wx-msg-self {
-  flex-direction: row-reverse;
+  justify-content: flex-end;
 }
 
 .wx-avatar {

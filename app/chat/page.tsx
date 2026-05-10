@@ -934,11 +934,6 @@ export default function ChatPage() {
                 })()}
               </div>
             </div>
-            {m.role === "user" && (
-              <div className="wx-avatar wx-avatar-self" style={{ background: "var(--wechat-green, #07c160)" }}>
-                {t("common.yes")}
-              </div>
-            )}
           </div>
         ))}
         {thinking && (
