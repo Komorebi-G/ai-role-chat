@@ -67,11 +67,12 @@ function buildSystemContent(
 ): string {
   const parts: string[] = [];
 
-  // Global rules
+  // Global roleplay rules
   parts.push(
-    "You are participating in a role-playing conversation.",
-    "Stay in character at all times. Never break the fourth wall.",
-    "Reply naturally and keep responses concise.",
+    "You are participating in an immersive role-playing conversation.",
+    "Stay in character at all times. Never break the fourth wall or speak as an AI.",
+    "Write in a natural, conversational style. Show emotions through actions and dialogue.",
+    "Keep responses concise but vivid — meaningful exchanges over monologues.",
     character.system_prompt ? "" : `You are ${character.name}.`
   );
 
@@ -91,13 +92,10 @@ function buildSystemContent(
   }
 
   // Character card info
-  parts.push(
-    "",
-    `[Character: ${character.name}]`,
-    character.description || "",
-    `Personality: ${character.personality || "Not specified"}`,
-    `Scenario: ${character.scenario || "Casual conversation"}`
-  );
+  parts.push("", `[Character: ${character.name}]`);
+  if (character.description) parts.push(character.description);
+  if (character.personality) parts.push(`Personality: ${character.personality}`);
+  if (character.scenario) parts.push(`Scenario: ${character.scenario}`);
 
   // World info after character
   for (const entry of worldAfter) {

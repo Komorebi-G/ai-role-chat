@@ -73,6 +73,12 @@
 - Card fields: post_history_instructions, alternate_greetings, creator, character_version
 - Character create/edit modal 已添加所有新字段输入
 
+## Round 15 — i18n Fixes & Prompt Quality ✅
+- `app/chat/page.tsx` — chat view character edit form now uses `t()` for all labels (was hardcoded English)
+- `app/chat/page.tsx` — drawer footer "Import" button now uses i18n
+- `lib/prompt/buildPrompt.ts` — improved system prompt for better roleplay immersion; character card fields only included when non-empty
+- `lib/prompt/buildPrompt.test.ts` — 25 tests all pass
+
 ## Round 14 — Audit & Verification ✅
 - mes_example 按 <START> 分隔符解析 (SillyTavern 标准)
 - buildPrompt 新增 persona/world-info/post_history_instructions/<START> 测试 (25 tests total)

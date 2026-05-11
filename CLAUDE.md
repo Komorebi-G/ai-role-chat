@@ -179,3 +179,201 @@ The current todo.md tracks a phased implementation plan:
 - **P0**: Character card JSON, Prompt Builder, context trimming, chat API, mobile UX (already mostly done)
 - **P1**: Swipe/reply variants (data structure exists, UI needs swipe navigation), simplified World Info (keyword-based lorebook), README
 - **P2**: PNG character cards, real tokenizer, prompt debug panel, advanced World Info (recursion, sticky, cooldown), multi-character group chat, plugin system
+
+
+
+# AI Role Chat — Autonomous Development Rules
+
+这是一个长期持续迭代的 AI Role Chat 项目。
+
+目标：
+构建一个以手机端体验为核心、接近 SillyTavern 深度角色扮演能力的 AI 聊天应用。
+
+技术栈：
+- Next.js App Router
+- TypeScript
+- Tailwind
+- SQLite (local)
+- Turso (production)
+- DeepSeek API
+- SSE Streaming
+
+==================================================
+# CORE PRODUCT DIRECTION
+==================================================
+
+产品核心：
+
+1. 手机端优先
+2. 类微信聊天体验
+3. 强角色扮演沉浸感
+4. SillyTavern 风格 prompt stack
+5. 长期记忆与上下文管理
+6. 流式响应体验
+7. 高可扩展性
+8. AI-native interaction
+
+==================================================
+# UI / UX RULES
+==================================================
+
+UI 必须：
+
+- 优先优化移动端
+- 默认适配竖屏
+- 输入框固定底部
+- 注意 iPhone safe area
+- 类微信气泡布局
+- 动画轻量自然
+- 不允许廉价后台管理风 UI
+- 减少“网页感”
+- 强调沉浸感
+
+聊天体验：
+
+- thinking 状态自然
+- AI 回复不要突然闪出
+- 支持流式生成
+- 避免布局跳动
+- Markdown 渲染稳定
+- 长文本滚动自然
+
+==================================================
+# ARCHITECTURE RULES
+==================================================
+
+必须遵守：
+
+- 小步迭代
+- 避免无意义大重构
+- 优先局部修改
+- 保持结构清晰
+- 避免过度工程化
+- 新功能必须可验证
+- 保持代码可读性
+
+禁止：
+
+- 随意删除旧功能
+- 未验证直接宣布完成
+- 引入明显复杂依赖
+- 无理由重写已有模块
+
+==================================================
+# ROLEPLAY SYSTEM RULES
+==================================================
+
+Prompt stack 顺序必须稳定：
+
+1. system
+2. world/system extensions
+3. character card
+4. example dialogues
+5. memory
+6. recent chat history
+
+上下文管理：
+
+- 必须支持 FIFO trimming
+- 避免 prompt 爆炸
+- 保持角色一致性
+- 尽量减少角色崩坏
+
+角色系统：
+
+- 支持角色卡导入导出
+- 支持 JSON character cards
+- 兼容 SillyTavern 思想
+- 允许未来扩展世界书/lorebook
+
+==================================================
+# DEVELOPMENT LOOP RULES
+==================================================
+
+每轮迭代必须：
+
+1. 先分析现有代码
+2. 阅读 TODO.md
+3. 阅读 SHARED_TASK_NOTES.md
+4. 阅读 CHANGELOG.md
+5. 理解当前目标
+6. 再开始实现
+
+每轮结束必须：
+
+1. 验证功能
+2. 尝试运行 build
+3. 检查 lint
+4. 更新 CHANGELOG.md
+5. 更新 SHARED_TASK_NOTES.md
+6. 更新 TODO.md 状态
+
+==================================================
+# AUTONOMOUS BEHAVIOR
+==================================================
+
+允许主动：
+
+- 发现 bug
+- 修复问题
+- 优化 UI
+- 优化 prompt
+- 改善移动端体验
+- 提高稳定性
+- 增加合理功能
+- 完善项目结构
+
+如果发现：
+
+- 明显 UX 问题
+- 技术债务
+- 结构混乱
+- 重复代码
+- prompt 不合理
+
+允许自主处理。
+
+==================================================
+# PRIORITY ORDER
+==================================================
+
+优先级：
+
+1. 手机端体验
+2. 聊天沉浸感
+3. 流式响应稳定性
+4. 角色扮演质量
+5. UI 美观
+6. 性能
+7. 可扩展性
+8. 管理功能
+
+==================================================
+# LONG TERM GOALS
+==================================================
+
+长期目标：
+
+- 接近 SillyTavern 核心体验
+- 接近原生 App 体验
+- 高质量移动端聊天 UI
+- 稳定角色扮演
+- 多角色支持
+- 长上下文管理
+- AI companion experience
+
+==================================================
+# IMPORTANT
+==================================================
+
+不要：
+
+- 提前宣布完成
+- 跳过验证
+- 只改 UI 不验证逻辑
+- 生成占位代码
+- 留下明显 TODO 不处理
+
+如果某轮无法彻底解决问题：
+必须记录到 SHARED_TASK_NOTES.md，
+交给下一轮继续处理。
