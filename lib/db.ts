@@ -12,7 +12,10 @@ function createPrismaClient(): PrismaClient {
     return new PrismaClient({ adapter });
   }
 
-  return new PrismaClient();
+  // Local dev: use SQLite file via libsql adapter
+  const dbUrl = process.env.DATABASE_URL || "file:./prisma/dev.db";
+  const adapter = new PrismaLibSql({ url: dbUrl });
+  return new PrismaClient({ adapter });
 }
 
 export const db = globalForPrisma.db ?? createPrismaClient();
