@@ -45,6 +45,22 @@ interface AdminUser {
   createdAt: string;
 }
 
+interface WorldEntry {
+  id: string;
+  keys: string[];
+  content: string;
+  enabled: boolean;
+  position: "beforeCharacter" | "afterCharacter";
+  order: number;
+}
+
+interface WorldBook {
+  id: string;
+  name: string;
+  description?: string;
+  entries: WorldEntry[];
+}
+
 interface ChatSettings {
   temperature: number;
   maxTokens: number;
@@ -102,6 +118,10 @@ export default function ChatPage() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [showWorldInfo, setShowWorldInfo] = useState(false);
+  const [worldLoading, setWorldLoading] = useState(false);
+  const [worldError, setWorldError] = useState("");
+  const [worldForm, setWorldForm] = useState<WorldBook | null>(null);
   const [clearLoading, setClearLoading] = useState(false);
   const [settings, setSettings] = useState<ChatSettings>(loadSettings);
   const [showSettings, setShowSettings] = useState(false);
@@ -612,6 +632,82 @@ export default function ChatPage() {
     setShowMoreMenu(false);
   }
 
+  async function openWorldInfo() {
+    setShowWorldInfo(true);
+    setShowMoreMenu(false);
+    setWorldError("");
+    setWorldLoading(true);
+    try {
+      const res = await fetch("/api/worlds");
+      if (res.ok) {
+        const books: WorldBook[] = await res.json();
+        // Clone the default book for editing
+        const dfl = books.find((b: WorldBook) => b.id === "default") || books[0];
+        setWorldForm(dfl ? JSON.parse(JSON.stringify(dfl)) : null);
+      } else {
+        setWorldError(t("world.loadFailed"));
+      }
+    } catch {
+      setWorldError(t("common.networkError"));
+    } finally {
+      setWorldLoading(false);
+    }
+  }
+
+  function addWorldEntry() {
+    if (!worldForm) return;
+    const newEntry: WorldEntry = {
+      id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
+      keys: [],
+      content: "",
+      enabled: true,
+      position: "beforeCharacter",
+      order: worldForm.entries.length,
+    };
+    setWorldForm({ ...worldForm, entries: [...worldForm.entries, newEntry] });
+  }
+
+  function updateWorldEntry(idx: number, patch: Partial<WorldEntry>) {
+    if (!worldForm) return;
+    const entries = worldForm.entries.map((e, i) => i === idx ? { ...e, ...patch } : e);
+    setWorldForm({ ...worldForm, entries });
+  }
+
+  function removeWorldEntry(idx: number) {
+    if (!worldForm) return;
+    setWorldForm({ ...worldForm, entries: worldForm.entries.filter((_, i) => i !== idx) });
+  }
+
+  async function saveWorldBook() {
+    if (!worldForm) return;
+    setWorldLoading(true);
+    setWorldError("");
+    try {
+      const res = await fetch(`/api/worlds?id=${worldForm.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(worldForm),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        setWorldError(d.error || t("world.saveFailed"));
+      } else {
+        setShowWorldInfo(false);
+        // Refresh the active entries in the background
+        if (selectedChar && activeConversationId) {
+          fetch(`/api/chat?characterId=${selectedChar.id}&conversationId=${activeConversationId}`)
+            .then((r) => r.json())
+            .then((d) => setActiveWorldEntryIds(d.worldEntryIds || []))
+            .catch(() => {});
+        }
+      }
+    } catch {
+      setWorldError(t("common.networkError"));
+    } finally {
+      setWorldLoading(false);
+    }
+  }
+
   if (unauthorized) return null;
 
   // ===== Character List View (WeChat "Chats" page) =====
@@ -656,6 +752,7 @@ export default function ChatPage() {
               {t("common.import")}
               <input type="file" accept=".json" className="import-input" onChange={handleImportChar} />
             </label>
+            <button className="wechat-footer-btn" onClick={openWorldInfo}>{t("world.title")}</button>
             <button className="wechat-footer-btn" onClick={openAdmin}>{t("admin.users")}</button>
             <button className="wechat-footer-btn" onClick={handleLogout}>{t("common.logout")}</button>
           </div>
@@ -838,6 +935,107 @@ export default function ChatPage() {
             </div>
           </div>
         )}
+
+        {showWorldInfo && (
+          <div className="wechat-overlay" onClick={() => setShowWorldInfo(false)}>
+            <div className="wechat-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "520px" }}>
+              <div className="wechat-modal-header">
+                <span>{t("world.title")}</span>
+                <button className="wechat-modal-close" onClick={() => setShowWorldInfo(false)}>×</button>
+              </div>
+              {worldError && <div className="wechat-error">{worldError}</div>}
+              {worldLoading && !worldForm ? <p className="wechat-loading">{t("common.loading")}</p> : worldForm ? (
+                <div className="wechat-modal-body">
+                  <div className="settings-field">
+                    <label>{t("world.name")}</label>
+                    <input className="wechat-input" value={worldForm.name}
+                      onChange={(e) => setWorldForm({ ...worldForm, name: e.target.value })} />
+                  </div>
+                  <div className="settings-field">
+                    <label>{t("world.description")}</label>
+                    <input className="wechat-input" value={worldForm.description || ""}
+                      onChange={(e) => setWorldForm({ ...worldForm, description: e.target.value })} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+                    <strong style={{ fontSize: 13 }}>{t("world.entries")} ({worldForm.entries.length})</strong>
+                    <button className="mini-btn" onClick={addWorldEntry}>+ {t("world.addEntry")}</button>
+                  </div>
+                  {worldForm.entries.length === 0 ? (
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, textAlign: "center", padding: 16 }}>{t("world.noEntries")}</p>
+                  ) : (
+                    <div style={{ maxHeight: "40vh", overflowY: "auto", marginTop: 8 }}>
+                      {worldForm.entries.map((entry, idx) => (
+                        <div key={entry.id || idx} style={{
+                          border: "1px solid var(--border-color)",
+                          borderRadius: "var(--radius)",
+                          padding: 10,
+                          marginBottom: 8,
+                          background: "var(--bg-card)",
+                        }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <input
+                                style={{ width: 160, fontSize: 12, padding: "4px 8px", border: "1px solid var(--border-color)", borderRadius: "var(--radius)", background: "var(--bg)", color: "var(--text)" }}
+                                value={entry.id}
+                                onChange={(e) => updateWorldEntry(idx, { id: e.target.value })}
+                                placeholder={t("world.entryId")}
+                              />
+                              <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                                <input type="checkbox" checked={entry.enabled} onChange={(e) => updateWorldEntry(idx, { enabled: e.target.checked })} />
+                                {t("world.entryEnabled")}
+                              </label>
+                            </div>
+                            <button className="mini-btn danger-outline" style={{ fontSize: 10 }}
+                              onClick={() => removeWorldEntry(idx)}>{t("world.deleteEntry")}</button>
+                          </div>
+                          <div style={{ marginBottom: 6 }}>
+                            <input
+                              style={{ width: "100%", fontSize: 12, padding: "4px 8px", border: "1px solid var(--border-color)", borderRadius: "var(--radius)", background: "var(--bg)", color: "var(--text)", boxSizing: "border-box" }}
+                              value={entry.keys.join(", ")}
+                              onChange={(e) => updateWorldEntry(idx, { keys: e.target.value.split(",").map((k: string) => k.trim()).filter(Boolean) })}
+                              placeholder={t("world.entryKeys")}
+                            />
+                          </div>
+                          <div style={{ marginBottom: 6 }}>
+                            <textarea
+                              style={{ width: "100%", fontSize: 12, padding: "6px 8px", border: "1px solid var(--border-color)", borderRadius: "var(--radius)", background: "var(--bg)", color: "var(--text)", resize: "vertical", minHeight: 50, boxSizing: "border-box" }}
+                              rows={2}
+                              value={entry.content}
+                              onChange={(e) => updateWorldEntry(idx, { content: e.target.value })}
+                              placeholder={t("world.entryContent")}
+                            />
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <select
+                              style={{ fontSize: 12, padding: "4px 6px", border: "1px solid var(--border-color)", borderRadius: "var(--radius)", background: "var(--bg)", color: "var(--text)", flex: 1 }}
+                              value={entry.position}
+                              onChange={(e) => updateWorldEntry(idx, { position: e.target.value as "beforeCharacter" | "afterCharacter" })}
+                            >
+                              <option value="beforeCharacter">{t("world.entryBefore")}</option>
+                              <option value="afterCharacter">{t("world.entryAfter")}</option>
+                            </select>
+                            <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+                              {t("world.entryOrder")}:
+                              <input
+                                style={{ width: 50, fontSize: 12, padding: "4px 6px", border: "1px solid var(--border-color)", borderRadius: "var(--radius)", background: "var(--bg)", color: "var(--text)" }}
+                                type="number"
+                                value={entry.order}
+                                onChange={(e) => updateWorldEntry(idx, { order: parseInt(e.target.value) || 0 })}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button className="wechat-btn wechat-btn-primary" style={{ marginTop: 12 }} onClick={saveWorldBook} disabled={worldLoading}>
+                    {worldLoading ? t("common.loading") : t("common.save")}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -867,6 +1065,7 @@ export default function ChatPage() {
               <button onClick={() => { setShowSettings(true); setShowMoreMenu(false); }}>{t("settings.title")}</button>
               <button onClick={toggleTheme}>{theme === "light" ? t("settings.themeDark") : t("settings.themeLight")}</button>
               {role === "admin" && <button onClick={() => { startEditChar(selectedChar); }}>{t("char.edit")}</button>}
+              {role === "admin" && <button onClick={() => { openWorldInfo(); }}>{t("world.title")}</button>}
               <button onClick={handleClearChat} disabled={clearLoading || messages.length === 0}>
                 {clearLoading ? t("common.loading") : t("chat.clearChat")}
               </button>
@@ -1071,6 +1270,7 @@ export default function ChatPage() {
                   Import
                   <input type="file" accept=".json" className="import-input" onChange={handleImportChar} />
                 </label>
+                <button className="wechat-footer-btn" onClick={openWorldInfo}>{t("world.title")}</button>
                 <button className="wechat-footer-btn" onClick={openAdmin}>{t("admin.users")}</button>
               </div>
             )}
@@ -1269,6 +1469,107 @@ export default function ChatPage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {showWorldInfo && (
+        <div className="wechat-overlay" onClick={() => setShowWorldInfo(false)}>
+          <div className="wechat-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "520px" }}>
+            <div className="wechat-modal-header">
+              <span>{t("world.title")}</span>
+              <button className="wechat-modal-close" onClick={() => setShowWorldInfo(false)}>×</button>
+            </div>
+            {worldError && <div className="wechat-error">{worldError}</div>}
+            {worldLoading && !worldForm ? <p className="wechat-loading">{t("common.loading")}</p> : worldForm ? (
+              <div className="wechat-modal-body">
+                <div className="settings-field">
+                  <label>{t("world.name")}</label>
+                  <input className="wechat-input" value={worldForm.name}
+                    onChange={(e) => setWorldForm({ ...worldForm, name: e.target.value })} />
+                </div>
+                <div className="settings-field">
+                  <label>{t("world.description")}</label>
+                  <input className="wechat-input" value={worldForm.description || ""}
+                    onChange={(e) => setWorldForm({ ...worldForm, description: e.target.value })} />
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+                  <strong style={{ fontSize: 13 }}>{t("world.entries")} ({worldForm.entries.length})</strong>
+                  <button className="mini-btn" onClick={addWorldEntry}>+ {t("world.addEntry")}</button>
+                </div>
+                {worldForm.entries.length === 0 ? (
+                  <p style={{ color: "var(--text-muted)", fontSize: 13, textAlign: "center", padding: 16 }}>{t("world.noEntries")}</p>
+                ) : (
+                  <div style={{ maxHeight: "40vh", overflowY: "auto", marginTop: 8 }}>
+                    {worldForm.entries.map((entry, idx) => (
+                      <div key={entry.id || idx} style={{
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "var(--radius)",
+                        padding: 10,
+                        marginBottom: 8,
+                        background: "var(--bg-card)",
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <input
+                              style={{ width: 160, fontSize: 12, padding: "4px 8px", border: "1px solid var(--border-color)", borderRadius: "var(--radius)", background: "var(--bg)", color: "var(--text)" }}
+                              value={entry.id}
+                              onChange={(e) => updateWorldEntry(idx, { id: e.target.value })}
+                              placeholder={t("world.entryId")}
+                            />
+                            <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                              <input type="checkbox" checked={entry.enabled} onChange={(e) => updateWorldEntry(idx, { enabled: e.target.checked })} />
+                              {t("world.entryEnabled")}
+                            </label>
+                          </div>
+                          <button className="mini-btn danger-outline" style={{ fontSize: 10 }}
+                            onClick={() => removeWorldEntry(idx)}>{t("world.deleteEntry")}</button>
+                        </div>
+                        <div style={{ marginBottom: 6 }}>
+                          <input
+                            style={{ width: "100%", fontSize: 12, padding: "4px 8px", border: "1px solid var(--border-color)", borderRadius: "var(--radius)", background: "var(--bg)", color: "var(--text)", boxSizing: "border-box" }}
+                            value={entry.keys.join(", ")}
+                            onChange={(e) => updateWorldEntry(idx, { keys: e.target.value.split(",").map((k: string) => k.trim()).filter(Boolean) })}
+                            placeholder={t("world.entryKeys")}
+                          />
+                        </div>
+                        <div style={{ marginBottom: 6 }}>
+                          <textarea
+                            style={{ width: "100%", fontSize: 12, padding: "6px 8px", border: "1px solid var(--border-color)", borderRadius: "var(--radius)", background: "var(--bg)", color: "var(--text)", resize: "vertical", minHeight: 50, boxSizing: "border-box" }}
+                            rows={2}
+                            value={entry.content}
+                            onChange={(e) => updateWorldEntry(idx, { content: e.target.value })}
+                            placeholder={t("world.entryContent")}
+                          />
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <select
+                            style={{ fontSize: 12, padding: "4px 6px", border: "1px solid var(--border-color)", borderRadius: "var(--radius)", background: "var(--bg)", color: "var(--text)", flex: 1 }}
+                            value={entry.position}
+                            onChange={(e) => updateWorldEntry(idx, { position: e.target.value as "beforeCharacter" | "afterCharacter" })}
+                          >
+                            <option value="beforeCharacter">{t("world.entryBefore")}</option>
+                            <option value="afterCharacter">{t("world.entryAfter")}</option>
+                          </select>
+                          <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+                            {t("world.entryOrder")}:
+                            <input
+                              style={{ width: 50, fontSize: 12, padding: "4px 6px", border: "1px solid var(--border-color)", borderRadius: "var(--radius)", background: "var(--bg)", color: "var(--text)" }}
+                              type="number"
+                              value={entry.order}
+                              onChange={(e) => updateWorldEntry(idx, { order: parseInt(e.target.value) || 0 })}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button className="wechat-btn wechat-btn-primary" style={{ marginTop: 12 }} onClick={saveWorldBook} disabled={worldLoading}>
+                  {worldLoading ? t("common.loading") : t("common.save")}
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

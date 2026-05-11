@@ -153,7 +153,24 @@ const zhCN = {
   "admin.deleteConfirm": "确认删除此用户？",
 
   // World Info
+  "world.title": "世界信息",
   "world.activeEntries": "已激活世界书条目",
+  "world.name": "名称",
+  "world.description": "描述",
+  "world.entries": "条目",
+  "world.entryId": "条目 ID",
+  "world.entryKeys": "关键词（逗号分隔）",
+  "world.entryContent": "内容",
+  "world.entryPosition": "位置",
+  "world.entryBefore": "角色信息前",
+  "world.entryAfter": "角色信息后",
+  "world.entryOrder": "排序",
+  "world.entryEnabled": "启用",
+  "world.addEntry": "添加条目",
+  "world.deleteEntry": "删除",
+  "world.noEntries": "暂无条目，添加一个以激活世界信息。",
+  "world.saveFailed": "保存失败",
+  "world.loadFailed": "加载失败",
 
   // Token budget
   "token.budget": "上下文",

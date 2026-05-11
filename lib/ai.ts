@@ -23,11 +23,6 @@ function checkRateLimit(userId: string): void {
   }
 
   log.push(now);
-
-  // Cleanup empty logs to prevent memory leak
-  if (log.length === 0) {
-    userRequestLogs.delete(userId);
-  }
 }
 
 export async function aiChat(

@@ -1,6 +1,31 @@
 {
   "id": "default",
   "name": "Default World",
-  "description": "An empty starter world book. Add entries with keywords to enrich the AI's knowledge.",
-  "entries": []
+  "description": "Sample world book with example entries. Edit or add entries to enrich the AI's knowledge of the world.",
+  "entries": [
+    {
+      "id": "university-campus",
+      "keys": ["大学", "university", "campus", "校园", "图书馆", "library", "食堂", "dorm", "宿舍"],
+      "content": "The story takes place at East China University, a mid-sized university with a beautiful campus known for its cherry blossom avenue. The campus has a modern library open until 11pm, several cafeterias, and mixed-gender dormitories. The computer science building is the newest on campus, with a 24-hour lab.",
+      "enabled": true,
+      "position": "beforeCharacter",
+      "order": 1
+    },
+    {
+      "id": "ai-research-lab",
+      "keys": ["AI", "lab", "实验室", "项目", "research", "agent", "模型", "model", "开源", "open source"],
+      "content": "Professor Zhang's AI Research Lab is a small but ambitious group of 8 students working on LLM agents, prompt engineering, and human-AI interaction. The lab meets every Friday afternoon in Room 401 of the CS building. Current projects include a multi-agent debate system and a personal AI workflow assistant. The lab values practical engineering over pure theory.",
+      "enabled": true,
+      "position": "afterCharacter",
+      "order": 1
+    },
+    {
+      "id": "weather-season",
+      "keys": ["天气", "weather", "下雨", "rain", "冷", "cold", "热", "hot", "春天", "spring", "秋天", "autumn", "冬天", "winter"],
+      "content": "It's late autumn. The weather is cool and often rainy, with temperatures between 10-18°C. The campus is covered in golden ginkgo leaves. Sunsets come early, around 5:30pm. Students are preparing for end-of-semester projects and exams.",
+      "enabled": true,
+      "position": "beforeCharacter",
+      "order": 2
+    }
+  ]
 }

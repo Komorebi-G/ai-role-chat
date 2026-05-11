@@ -154,7 +154,24 @@ const en = {
   "admin.deleteConfirm": "Delete this user?",
 
   // World Info
+  "world.title": "World Info",
   "world.activeEntries": "Active World Entries",
+  "world.name": "Name",
+  "world.description": "Description",
+  "world.entries": "Entries",
+  "world.entryId": "Entry ID",
+  "world.entryKeys": "Keywords (comma-separated)",
+  "world.entryContent": "Content",
+  "world.entryPosition": "Position",
+  "world.entryBefore": "Before Character",
+  "world.entryAfter": "After Character",
+  "world.entryOrder": "Order",
+  "world.entryEnabled": "Enabled",
+  "world.addEntry": "Add Entry",
+  "world.deleteEntry": "Delete",
+  "world.noEntries": "No entries yet. Add one to activate World Info.",
+  "world.saveFailed": "Save failed",
+  "world.loadFailed": "Load failed",
 
   // Token budget
   "token.budget": "Context",
