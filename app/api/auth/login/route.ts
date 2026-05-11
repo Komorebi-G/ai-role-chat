@@ -70,7 +70,11 @@ export async function POST(req: Request) {
     });
     return res;
   } catch (err) {
-    console.error("Login error:", err);
+    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error("Login error:", message);
+    if (err instanceof Error && err.stack) {
+      console.error("Login error stack:", err.stack);
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
