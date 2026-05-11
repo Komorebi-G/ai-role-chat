@@ -3,7 +3,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { useTranslation, type Locale } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
+import CreateCharModal from "@/components/CreateCharModal";
+import SettingsModal, { type ChatSettings } from "@/components/SettingsModal";
+import AdminModal from "@/components/AdminModal";
 
 interface Character {
   id: string;
@@ -43,12 +46,6 @@ interface AdminUser {
   username: string;
   role: string;
   createdAt: string;
-}
-
-interface ChatSettings {
-  temperature: number;
-  maxTokens: number;
-  persona: string;
 }
 
 function loadSettings(): ChatSettings {
@@ -668,175 +665,37 @@ export default function ChatPage() {
 
         {/* Modals */}
         {showSettings && (
-          <div className="wechat-overlay" onClick={() => setShowSettings(false)}>
-            <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="wechat-modal-header">
-                <span>{t("settings.title")}</span>
-                <button className="wechat-modal-close" onClick={() => setShowSettings(false)}>×</button>
-              </div>
-              <div className="wechat-modal-body">
-                <div className="settings-field">
-                  <label>{t("settings.temperature")}: <strong>{settings.temperature.toFixed(1)}</strong></label>
-                  <input type="range" min="0.1" max="2.0" step="0.1" value={settings.temperature}
-                    onChange={(e) => { const next = { ...settings, temperature: parseFloat(e.target.value) }; setSettings(next); saveSettings(next); }} />
-                </div>
-                <div className="settings-field">
-                  <label>{t("settings.maxTokens")}: <strong>{settings.maxTokens}</strong></label>
-                  <input type="range" min="256" max="4096" step="128" value={settings.maxTokens}
-                    onChange={(e) => { const next = { ...settings, maxTokens: parseInt(e.target.value) }; setSettings(next); saveSettings(next); }} />
-                </div>
-                <div className="settings-field">
-                  <label>{t("settings.persona")}</label>
-                  <textarea className="wechat-textarea" rows={3} value={settings.persona}
-                    placeholder={t("settings.personaHint")}
-                    onChange={(e) => { const next = { ...settings, persona: e.target.value }; setSettings(next); saveSettings(next); }} />
-                </div>
-                <div className="settings-field">
-                  <label>{t("settings.language")}</label>
-                  <select className="wechat-input" value={locale} onChange={(e) => setLocale(e.target.value as Locale)}>
-                    <option value="zh-CN">{t("lang.zhCN")}</option>
-                    <option value="en">{t("lang.en")}</option>
-                  </select>
-                </div>
-                <button className="wechat-btn" onClick={() => { const d = { temperature: 0.8, maxTokens: 1024, persona: "" }; setSettings(d); saveSettings(d); }}>{t("settings.resetDefaults")}</button>
-              </div>
-            </div>
-          </div>
+          <SettingsModal
+            settings={settings}
+            onSettingsChange={(s) => { setSettings(s); saveSettings(s); }}
+            locale={locale}
+            setLocale={setLocale}
+            onClose={() => setShowSettings(false)}
+          />
         )}
 
         {showCreateChar && (
-          <div className="wechat-overlay" onClick={() => { setShowCreateChar(false); setEditingCharId(null); }}>
-            <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="wechat-modal-header">
-                <span>{editingCharId ? t("char.editTitle") : t("char.createTitle")}</span>
-                <button className="wechat-modal-close" onClick={() => { setShowCreateChar(false); setEditingCharId(null); }}>×</button>
-              </div>
-              {charError && <div className="wechat-error">{charError}</div>}
-              <form className="wechat-modal-body" onSubmit={handleCreateChar}>
-                <div className="settings-field">
-                  <label>{t("char.id")} *</label>
-                  <input className="wechat-input" value={charForm.id}
-                    onChange={(e) => setCharForm((f) => ({ ...f, id: e.target.value }))}
-                    placeholder="alice" required disabled={!!editingCharId} />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.name")} *</label>
-                  <input className="wechat-input" value={charForm.name}
-                    onChange={(e) => setCharForm((f) => ({ ...f, name: e.target.value }))}
-                    placeholder="Alice" required />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.description")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.description}
-                    onChange={(e) => setCharForm((f) => ({ ...f, description: e.target.value }))}
-                    placeholder="A brief description" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.personality")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.personality}
-                    onChange={(e) => setCharForm((f) => ({ ...f, personality: e.target.value }))}
-                    placeholder="Personality traits" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.scenario")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.scenario}
-                    onChange={(e) => setCharForm((f) => ({ ...f, scenario: e.target.value }))}
-                    placeholder="Conversation scenario" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.firstMes")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.first_mes}
-                    onChange={(e) => setCharForm((f) => ({ ...f, first_mes: e.target.value }))}
-                    placeholder="Opening message" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.mesExample")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.mes_example}
-                    onChange={(e) => setCharForm((f) => ({ ...f, mes_example: e.target.value }))}
-                    placeholder="User: ...&#10;Character: ..." />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.systemPrompt")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.system_prompt}
-                    onChange={(e) => setCharForm((f) => ({ ...f, system_prompt: e.target.value }))}
-                    placeholder="Custom system instructions" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.postHistory")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.post_history_instructions}
-                    onChange={(e) => setCharForm((f) => ({ ...f, post_history_instructions: e.target.value }))}
-                    placeholder="Instructions injected after chat history" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.altGreetings")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.alternate_greetings}
-                    onChange={(e) => setCharForm((f) => ({ ...f, alternate_greetings: e.target.value }))}
-                    placeholder="Alt greeting 1&#10;Alt greeting 2" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.creator")}</label>
-                  <input className="wechat-input" value={charForm.creator}
-                    onChange={(e) => setCharForm((f) => ({ ...f, creator: e.target.value }))}
-                    placeholder="Character creator name" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.version")}</label>
-                  <input className="wechat-input" value={charForm.character_version}
-                    onChange={(e) => setCharForm((f) => ({ ...f, character_version: e.target.value }))}
-                    placeholder="1.0" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.creatorNotes")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.creator_notes}
-                    onChange={(e) => setCharForm((f) => ({ ...f, creator_notes: e.target.value }))}
-                    placeholder="Display-only notes for the creator" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.tags")}</label>
-                  <input className="wechat-input" value={charForm.tags}
-                    onChange={(e) => setCharForm((f) => ({ ...f, tags: e.target.value }))}
-                    placeholder="friend, fantasy, slice-of-life" />
-                </div>
-                <button className="wechat-btn wechat-btn-primary" type="submit" disabled={charCreating}>
-                  {charCreating ? t("char.saving") : editingCharId ? t("char.updateBtn") : t("char.createBtn")}
-                </button>
-              </form>
-            </div>
-          </div>
+          <CreateCharModal
+            editingCharId={editingCharId}
+            charForm={charForm}
+            setCharForm={setCharForm}
+            charCreating={charCreating}
+            charError={charError}
+            onClose={() => { setShowCreateChar(false); setEditingCharId(null); }}
+            onSubmit={handleCreateChar}
+          />
         )}
 
         {showAdmin && (
-          <div className="wechat-overlay" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>
-            <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="wechat-modal-header">
-                <span>{t("admin.title")}</span>
-                <button className="wechat-modal-close" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>×</button>
-              </div>
-              {adminError && <div className="wechat-error">{adminError}</div>}
-              {adminLoading ? <p className="wechat-loading">{t("common.loading")}</p> : (
-                <div className="wechat-user-list">
-                  {adminUsers.map((u) => (
-                    <div key={u.id} className="wechat-user-row">
-                      <div>
-                        <div className="user-name">{u.username}</div>
-                        <div className="user-meta">{u.role} · {new Date(u.createdAt).toLocaleDateString()}</div>
-                      </div>
-                      <div>
-                        {deleteConfirm === u.id ? (
-                          <span className="confirm-group">
-                            <button className="mini-btn danger" onClick={() => handleDeleteUser(u.id)}>{t("common.confirm")}</button>
-                            <button className="mini-btn" onClick={() => setDeleteConfirm(null)}>{t("common.cancel")}</button>
-                          </span>
-                        ) : (
-                          <button className="mini-btn danger-outline" onClick={() => setDeleteConfirm(u.id)} disabled={u.id === "demo"}>{t("common.delete")}</button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <AdminModal
+            users={adminUsers}
+            loading={adminLoading}
+            error={adminError}
+            deleteConfirm={deleteConfirm}
+            onDeleteConfirm={setDeleteConfirm}
+            onDeleteUser={handleDeleteUser}
+            onClose={() => { setShowAdmin(false); setDeleteConfirm(null); }}
+          />
         )}
       </div>
     );
@@ -1102,175 +961,37 @@ export default function ChatPage() {
       )}
 
       {showSettings && (
-        <div className="wechat-overlay" onClick={() => setShowSettings(false)}>
-          <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="wechat-modal-header">
-              <span>{t("settings.title")}</span>
-              <button className="wechat-modal-close" onClick={() => setShowSettings(false)}>×</button>
-            </div>
-            <div className="wechat-modal-body">
-              <div className="settings-field">
-                <label>{t("settings.temperature")}: <strong>{settings.temperature.toFixed(1)}</strong></label>
-                <input type="range" min="0.1" max="2.0" step="0.1" value={settings.temperature}
-                  onChange={(e) => { const next = { ...settings, temperature: parseFloat(e.target.value) }; setSettings(next); saveSettings(next); }} />
-              </div>
-              <div className="settings-field">
-                <label>{t("settings.maxTokens")}: <strong>{settings.maxTokens}</strong></label>
-                <input type="range" min="256" max="4096" step="128" value={settings.maxTokens}
-                  onChange={(e) => { const next = { ...settings, maxTokens: parseInt(e.target.value) }; setSettings(next); saveSettings(next); }} />
-              </div>
-              <div className="settings-field">
-                <label>{t("settings.persona")}</label>
-                <textarea className="wechat-textarea" rows={3} value={settings.persona}
-                  placeholder={t("settings.personaHint")}
-                  onChange={(e) => { const next = { ...settings, persona: e.target.value }; setSettings(next); saveSettings(next); }} />
-              </div>
-              <div className="settings-field">
-                <label>{t("settings.language")}</label>
-                <select className="wechat-input" value={locale} onChange={(e) => setLocale(e.target.value as Locale)}>
-                  <option value="zh-CN">{t("lang.zhCN")}</option>
-                  <option value="en">{t("lang.en")}</option>
-                </select>
-              </div>
-              <button className="wechat-btn wechat-btn-primary" onClick={() => { const d = { temperature: 0.8, maxTokens: 1024, persona: "" }; setSettings(d); saveSettings(d); }}>{t("settings.resetDefaults")}</button>
-            </div>
-          </div>
-        </div>
+        <SettingsModal
+          settings={settings}
+          onSettingsChange={(s) => { setSettings(s); saveSettings(s); }}
+          locale={locale}
+          setLocale={setLocale}
+          onClose={() => setShowSettings(false)}
+        />
       )}
 
       {showCreateChar && (
-        <div className="wechat-overlay" onClick={() => { setShowCreateChar(false); setEditingCharId(null); }}>
-          <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="wechat-modal-header">
-              <span>{editingCharId ? t("char.editTitle") : t("char.createTitle")}</span>
-              <button className="wechat-modal-close" onClick={() => { setShowCreateChar(false); setEditingCharId(null); }}>×</button>
-            </div>
-            {charError && <div className="wechat-error">{charError}</div>}
-            <form className="wechat-modal-body" onSubmit={handleCreateChar}>
-              <div className="settings-field">
-                <label>ID *</label>
-                <input className="wechat-input" value={charForm.id}
-                  onChange={(e) => setCharForm((f) => ({ ...f, id: e.target.value }))}
-                  placeholder="alice" required disabled={!!editingCharId} />
-              </div>
-              <div className="settings-field">
-                <label>Name *</label>
-                <input className="wechat-input" value={charForm.name}
-                  onChange={(e) => setCharForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Alice" required />
-              </div>
-              <div className="settings-field">
-                <label>Description</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.description}
-                  onChange={(e) => setCharForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder="A brief description" />
-              </div>
-              <div className="settings-field">
-                <label>Personality</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.personality}
-                  onChange={(e) => setCharForm((f) => ({ ...f, personality: e.target.value }))}
-                  placeholder="Personality traits" />
-              </div>
-              <div className="settings-field">
-                <label>Scenario</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.scenario}
-                  onChange={(e) => setCharForm((f) => ({ ...f, scenario: e.target.value }))}
-                  placeholder="Conversation scenario" />
-              </div>
-              <div className="settings-field">
-                <label>First Message</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.first_mes}
-                  onChange={(e) => setCharForm((f) => ({ ...f, first_mes: e.target.value }))}
-                  placeholder="Opening message" />
-              </div>
-              <div className="settings-field">
-                <label>Example Dialogue</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.mes_example}
-                  onChange={(e) => setCharForm((f) => ({ ...f, mes_example: e.target.value }))}
-                  placeholder="User: ...&#10;Character: ..." />
-              </div>
-              <div className="settings-field">
-                <label>System Prompt</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.system_prompt}
-                  onChange={(e) => setCharForm((f) => ({ ...f, system_prompt: e.target.value }))}
-                  placeholder="Custom system instructions" />
-              </div>
-              <div className="settings-field">
-                <label>Post-History Instructions</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.post_history_instructions}
-                  onChange={(e) => setCharForm((f) => ({ ...f, post_history_instructions: e.target.value }))}
-                  placeholder="Instructions injected after chat history" />
-              </div>
-              <div className="settings-field">
-                <label>Alternate Greetings (one per line)</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.alternate_greetings}
-                  onChange={(e) => setCharForm((f) => ({ ...f, alternate_greetings: e.target.value }))}
-                  placeholder="Alt greeting 1&#10;Alt greeting 2" />
-              </div>
-              <div className="settings-field">
-                <label>Creator</label>
-                <input className="wechat-input" value={charForm.creator}
-                  onChange={(e) => setCharForm((f) => ({ ...f, creator: e.target.value }))}
-                  placeholder="Character creator name" />
-              </div>
-              <div className="settings-field">
-                <label>Version</label>
-                <input className="wechat-input" value={charForm.character_version}
-                  onChange={(e) => setCharForm((f) => ({ ...f, character_version: e.target.value }))}
-                  placeholder="1.0" />
-              </div>
-              <div className="settings-field">
-                <label>Creator Notes</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.creator_notes}
-                  onChange={(e) => setCharForm((f) => ({ ...f, creator_notes: e.target.value }))}
-                  placeholder="Display-only notes for the creator" />
-              </div>
-              <div className="settings-field">
-                <label>Tags (comma-separated)</label>
-                <input className="wechat-input" value={charForm.tags}
-                  onChange={(e) => setCharForm((f) => ({ ...f, tags: e.target.value }))}
-                  placeholder="friend, fantasy, slice-of-life" />
-              </div>
-              <button className="wechat-btn wechat-btn-primary" type="submit" disabled={charCreating}>
-                {charCreating ? t("char.saving") : editingCharId ? t("char.updateBtn") : t("char.createBtn")}
-              </button>
-            </form>
-          </div>
-        </div>
+        <CreateCharModal
+          editingCharId={editingCharId}
+          charForm={charForm}
+          setCharForm={setCharForm}
+          charCreating={charCreating}
+          charError={charError}
+          onClose={() => { setShowCreateChar(false); setEditingCharId(null); }}
+          onSubmit={handleCreateChar}
+        />
       )}
 
       {showAdmin && (
-        <div className="wechat-overlay" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>
-          <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="wechat-modal-header">
-              <span>{t("admin.title")}</span>
-              <button className="wechat-modal-close" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>×</button>
-            </div>
-            {adminError && <div className="wechat-error">{adminError}</div>}
-            {adminLoading ? <p className="wechat-loading">{t("common.loading")}</p> : (
-              <div className="wechat-user-list">
-                {adminUsers.map((u) => (
-                  <div key={u.id} className="wechat-user-row">
-                    <div>
-                      <div className="user-name">{u.username}</div>
-                      <div className="user-meta">{u.role} · {new Date(u.createdAt).toLocaleDateString()}</div>
-                    </div>
-                    <div>
-                      {deleteConfirm === u.id ? (
-                        <span className="confirm-group">
-                          <button className="mini-btn danger" onClick={() => handleDeleteUser(u.id)}>{t("common.confirm")}</button>
-                          <button className="mini-btn" onClick={() => setDeleteConfirm(null)}>{t("common.cancel")}</button>
-                        </span>
-                      ) : (
-                        <button className="mini-btn danger-outline" onClick={() => setDeleteConfirm(u.id)} disabled={u.id === "demo"}>{t("common.delete")}</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <AdminModal
+          users={adminUsers}
+          loading={adminLoading}
+          error={adminError}
+          deleteConfirm={deleteConfirm}
+          onDeleteConfirm={setDeleteConfirm}
+          onDeleteUser={handleDeleteUser}
+          onClose={() => { setShowAdmin(false); setDeleteConfirm(null); }}
+        />
       )}
     </div>
   );
