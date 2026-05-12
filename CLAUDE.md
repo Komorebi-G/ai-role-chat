@@ -10,8 +10,9 @@ npm run dev                    # Start dev server (port 3000)
 npm run build                  # Production build (migrate-turso + next build)
 npm run lint                   # ESLint (flat config: eslint .)
 npm run typecheck              # tsc --noEmit
-npm run test                   # vitest run (14 tests, 2 files)
+npm run test                   # vitest run (25 tests, 3 files)
 npx vitest                     # Watch mode
+npx vitest run <path>          # Run a single test file
 npx prisma migrate dev         # Apply pending migrations + regenerate client
 npx prisma generate            # Regenerate Prisma client only
 
@@ -20,8 +21,15 @@ git add <files>                 # Stage specific files (never use -A blindly)
 git commit -m "..."             # Commit with descriptive message
 git push                        # Push to origin/master → Vercel auto-deploys
 
+# push.sh — safe push with Prisma version check, auto-commits uncommitted changes
+./push.sh
+
 # Turso (production database, migrations auto-applied during Vercel build)
 turso db shell ai-role-chat ".tables"
+
+# Setup from scratch
+cp .env.example .env.local      # Then edit .env.local with DEEPSEEK_API_KEY
+npx prisma migrate dev          # Initialize local SQLite database
 ```
 
 `DATABASE_URL` is in `.env` (local) and `.env.local`. Prisma CLI reads `.env`, Next.js reads `.env.local`.
@@ -174,7 +182,7 @@ Dark mode: inline `<script>` in `app/layout.tsx` reads localStorage before paint
 
 **Vercel needs ALL FIVE variables set** in Settings → Environment Variables. Missing any = either build fails or runtime 500s.
 
-`DATABASE_URL` is in `.env` (read by Prisma CLI) and `.env.local` (read by Next.js).
+`DATABASE_URL` is in `.env` (read by Prisma CLI) and `.env.local` (read by Next.js). Copy `.env.example` to `.env.local` for local setup.
 
 ## Vercel Deployment & Cloud Reliability
 
@@ -246,11 +254,13 @@ Every push must pass these checks. The build check is the most important because
 ```bash
 npm run typecheck     # Must pass
 npm run build         # MUST PASS — simulates Vercel build pipeline locally
-npm run lint          # Should pass
-npm test              # Should pass (25 tests)
+npm run lint          # Should pass (flat config: eslint.config.mjs)
+npm test              # Should pass (25 tests, vitest.config.ts)
 ```
 
 **`npm run build` is the gatekeeper.** If it fails locally, it WILL fail on Vercel. This runs both `migrate-turso.mjs` (on local DB) and `next build`.
+
+**`./push.sh` is the recommended push workflow** — it validates Prisma version consistency, auto-commits uncommitted changes, and pushes.
 
 ### Database connection: most common failure points
 
@@ -268,15 +278,48 @@ These are the things most likely to break on Vercel but work locally:
 
 6. **Cold start timeout** — On Vercel's free tier, first request after inactivity triggers a cold start. Turso connection over HTTPS can take 1-3 seconds. The PrismaClient is cached on `globalThis` for warm requests.
 
-### Debugging Vercel runtime failures
+### Debugging
 
-When something works locally but returns 500 on Vercel:
+**Local API debugging:**
 
-1. **Vercel Function Logs**: Dashboard → Project → Functions → click the failing route → Logs tab. Look for `console.error` output.
-2. **Check the actual error**: Login route now logs `ErrorName: message` + full stack trace
-3. **PrismaClient init errors**: `lib/db.ts` detects adapter errors and prints version mismatch hint
-4. **Test Turso connectivity separately**: `turso db shell ai-role-chat ".tables"` to verify credentials work
-5. **Use `curl` from a Vercel-less context**: this isolates whether it's a Vercel issue or a code issue
+```bash
+# Test auth
+curl -s http://localhost:3000/api/auth/login -H "Content-Type: application/json" -d '{"username":"123","password":"123"}' | jq .
+
+# Test characters
+curl -s http://localhost:3000/api/characters | jq .
+
+# Chat with cookie from login response
+curl -s http://localhost:3000/api/chat -H "Content-Type: application/json" -b "token=<jwt>" -d '{"characterId":"alice","content":"hello"}'
+```
+
+**AI pipeline debugging:**
+- Set `NODE_ENV=development` and check server console for `console.error` output during chat requests
+- The full assembled messages array sent to DeepSeek is logged before the fetch call in `lib/deepseek.ts`
+- Rate limiting events are logged in `lib/ai.ts` — check for "Rate limit exceeded" in console
+- Stream response errors appear in the server console, not in the browser
+
+**Database inspection locally:**
+
+```bash
+npx prisma studio                  # GUI on port 5555
+sqlite3 prisma/dev.db ".tables"    # List tables
+sqlite3 prisma/dev.db "SELECT * FROM User;"
+sqlite3 prisma/dev.db "SELECT COUNT(*) FROM Message;"
+```
+
+**Frontend debugging:**
+- All pages are `"use client"` — standard React DevTools work
+- Auth state: check `token` cookie in Application → Cookies (httpOnly, can't read from JS)
+- Streaming: open Network tab, filter for `/api/chat`, view the response as text/plain chunks
+- localStorage keys: `theme`, `persona`, `temperature`, `maxTokens` (Settings panel)
+
+**Vercel runtime failures (works locally, 500 on Vercel):**
+
+1. **Vercel Function Logs**: Dashboard → Project → Functions → click the failing route → Logs tab
+2. **PrismaClient init errors**: `lib/db.ts` detects adapter errors and prints version mismatch hint
+3. **Test Turso connectivity**: `turso db shell ai-role-chat ".tables"` to verify credentials
+4. **Isolate with curl**: `curl https://your-app.vercel.app/api/auth/login -H "Content-Type: application/json" -d '{"username":"123","password":"123"}'`
 
 ### After deployment, verify these endpoints
 
@@ -300,13 +343,10 @@ node -e "const p = require('./package.json').dependencies; console.log('adapter:
 
 When upgrading: change all three together, run `npm install`, commit BOTH `package.json` and `package-lock.json`.
 
-## SillyTavern Analysis Reference
-
-`sillytavern_feature_analysis.md` contains a deep analysis of SillyTavern's architecture, covering: character card V1/V2/V3 specs, PromptManager order system, token budget management, World Info activation/recursion, swipe data model, JSONL chat storage, mobile layout, settings layering, and PNG metadata embedding. Refer to it when designing new features.
-
 ## Pending Work (see todo.md)
 
-The current todo.md tracks a phased implementation plan:
-- **P0**: Character card JSON, Prompt Builder, context trimming, chat API, mobile UX (already mostly done)
-- **P1**: Swipe/reply variants (data structure exists, UI needs swipe navigation), simplified World Info (keyword-based lorebook), README
-- **P2**: PNG character cards, real tokenizer, prompt debug panel, advanced World Info (recursion, sticky, cooldown), multi-character group chat, plugin system
+**Vercel reliability (ongoing):** Character CRUD uses `fs.writeFileSync` (fails on Vercel), demo account is in-memory, rate limiting is per-instance.
+
+**P1:** Swipe UI navigation, World Info frontend management UI.
+
+**P2:** PNG character cards, real tokenizer, prompt debug panel, advanced World Info (recursion/sticky/cooldown), multi-character group chat, plugin system.
