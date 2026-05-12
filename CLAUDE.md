@@ -39,11 +39,14 @@ This project is evolving toward a **SillyTavern-inspired AI role-play chat platf
 
 ## Architecture
 
-### Database: dual-mode SQLite
+### Database: dual-path SQLite (local file vs remote Turso)
 
-`lib/db.ts` switches based on environment variables:
-- **Local dev**: Turso vars NOT set → `DATABASE_URL` (file: `prisma/dev.db`)
-- **Production (Vercel)**: Turso vars ARE set → `@prisma/adapter-libsql` to Turso
+`lib/db.ts` switches at module init based on environment variables. **These two paths use the same adapter class but connect to completely different databases — local dev never touches Turso, Vercel never touches local files.**
+
+- **Local dev** (no Turso vars): `PrismaLibSql({ url: "file:./prisma/dev.db" })` → local SQLite file. Connection is instant.
+- **Production Vercel** (Turso vars set): `PrismaLibSql({ url: tursoUrl, authToken })` → remote Turso over HTTPS. Cold starts add 1-3s latency.
+
+Both paths use `@prisma/adapter-libsql`, so the Prisma Client API is identical — queries, relations, cascades work the same. The difference is only the underlying connection.
 
 Prisma schema has three models:
 - **User** — id, username (unique), passwordHash (bcrypt), role (default `"user"`), createdAt. Has `messages[]` and `conversations[]` relations, both cascade on delete.
@@ -161,13 +164,141 @@ Dark mode: inline `<script>` in `app/layout.tsx` reads localStorage before paint
 
 ### Environment variables
 
-| Variable | Local | Vercel |
-|---|---|---|
-| `DEEPSEEK_API_KEY` | `.env.local` | Required |
-| `JWT_SECRET` | Defaults to `"dev-secret-change-in-production"` | Required |
-| `DATABASE_URL` | `file:./dev.db` | Not needed |
-| `TURSO_DATABASE_URL` | Not needed | Required |
-| `TURSO_AUTH_TOKEN` | Not needed | Required |
+| Variable | Local | Vercel | Used by |
+|---|---|---|---|
+| `DEEPSEEK_API_KEY` | `.env.local` | Required | `lib/deepseek.ts` at runtime |
+| `JWT_SECRET` | Defaults to `"dev-secret-change-in-production"` | Required | `lib/auth.ts` cookie signing |
+| `DATABASE_URL` | `file:./prisma/dev.db` | Required for build | `prisma generate` (postinstall), local `lib/db.ts` |
+| `TURSO_DATABASE_URL` | Not needed | Required | `migrate-turso.mjs` (build) + `lib/db.ts` (runtime) |
+| `TURSO_AUTH_TOKEN` | Not needed | Required | `migrate-turso.mjs` (build) + `lib/db.ts` (runtime) |
+
+**Vercel needs ALL FIVE variables set** in Settings → Environment Variables. Missing any = either build fails or runtime 500s.
+
+`DATABASE_URL` is in `.env` (read by Prisma CLI) and `.env.local` (read by Next.js).
+
+## Vercel Deployment & Cloud Reliability
+
+**Critical rule: local dev works ≠ Vercel works.** The two environments use completely different database connections via the same `lib/db.ts` conditional. Code that passes locally can still fail on Vercel because the Turso connection path is never exercised in local development.
+
+### Database: two code paths, one file
+
+`lib/db.ts` switches database connection at runtime based on environment variables:
+
+```
+TURSO_DATABASE_URL + TURSO_AUTH_TOKEN both set?
+  ├─ YES → Vercel production path: PrismaLibSql({ url: tursoUrl, authToken })
+  │         Connects to remote Turso (libsql://) over HTTPS
+  │         This path is NEVER tested by npm run dev
+  │
+  └─ NO  → Local dev path: PrismaLibSql({ url: "file:./prisma/dev.db" })
+            Connects to local SQLite file
+```
+
+Any change to `lib/db.ts`, `prisma/schema.prisma`, migrations, or Prisma package versions MUST be validated against BOTH paths.
+
+### How to test the Vercel Turso path locally
+
+Before pushing, simulate Vercel's database connection locally:
+
+```bash
+# Get Turso URL and token
+turso db show ai-role-chat --url       # → TURSO_DATABASE_URL
+turso db tokens create ai-role-chat    # → TURSO_AUTH_TOKEN
+
+# Test with a quick script
+TURSO_DATABASE_URL="libsql://..." TURSO_AUTH_TOKEN="..." node -e "
+const { PrismaLibSql } = require('@prisma/adapter-libsql');
+const { PrismaClient } = require('@prisma/client');
+(async () => {
+  const adapter = new PrismaLibSql({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
+  const db = new PrismaClient({ adapter });
+  const u = await db.user.findUnique({ where: { username: 'lbh' } });
+  console.log('Turso OK, user:', u?.username ?? 'not found');
+  await db.\$disconnect();
+})().catch(e => { console.error('Turso FAIL:', e.message); process.exit(1); });
+```
+
+Or run the full build locally with Turso vars to fully simulate Vercel:
+
+```bash
+TURSO_DATABASE_URL="libsql://..." TURSO_AUTH_TOKEN="..." npm run build
+```
+
+### Build pipeline (Vercel's perspective)
+
+```
+git push → Vercel detects branch change
+  ├─ npm install
+  │   └─ postinstall: prisma generate          ← needs DATABASE_URL (has fallback in prisma.config.ts)
+  ├─ npm run build
+  │   ├─ node scripts/migrate-turso.mjs         ← needs TURSO_DATABASE_URL + TURSO_AUTH_TOKEN
+  │   │   Uses @libsql/client directly, NOT Prisma
+  │   │   Has 60s timeout, schema snapshot detection for idempotency
+  │   └─ next build                             ← compiles all routes/pages
+  └─ Deploy → serverless functions live
+       └─ First request: cold start → PrismaClient({ adapter }) connects to Turso
+```
+
+### Pre-push mandatory verification
+
+Every push must pass these checks. The build check is the most important because it's the closest simulation of Vercel:
+
+```bash
+npm run typecheck     # Must pass
+npm run build         # MUST PASS — simulates Vercel build pipeline locally
+npm run lint          # Should pass
+npm test              # Should pass (25 tests)
+```
+
+**`npm run build` is the gatekeeper.** If it fails locally, it WILL fail on Vercel. This runs both `migrate-turso.mjs` (on local DB) and `next build`.
+
+### Database connection: most common failure points
+
+These are the things most likely to break on Vercel but work locally:
+
+1. **Prisma version mismatch** — `@prisma/adapter-libsql`, `@prisma/client`, `prisma` must all be same major version. The adapter talks to the client internally; different majors = incompatible API. This caused repeated login crashes (see `docs/vercel-login-crash-analysis.md`).
+
+2. **Turso credentials** — `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` must be set in Vercel dashboard (Settings → Environment Variables). Expired or wrong token = all DB queries fail at runtime.
+
+3. **Schema drift** — if you modify `prisma/schema.prisma` without creating a migration, the Prisma Client types won't match the actual Turso tables. Always create a migration: `npx prisma migrate dev --name <name>`.
+
+4. **New migration not in snapshot detection** — `migrate-turso.mjs` has an `isMigrationAlreadyApplied()` switch. New migrations must be added there or the build may fail with "table already exists".
+
+5. **`prisma generate` needs valid URL** — `prisma.config.ts` requires a datasource URL. It now has a `file:./prisma/dev.db` fallback, but if that path is removed or renamed, Vercel build breaks at `postinstall`.
+
+6. **Cold start timeout** — On Vercel's free tier, first request after inactivity triggers a cold start. Turso connection over HTTPS can take 1-3 seconds. The PrismaClient is cached on `globalThis` for warm requests.
+
+### Debugging Vercel runtime failures
+
+When something works locally but returns 500 on Vercel:
+
+1. **Vercel Function Logs**: Dashboard → Project → Functions → click the failing route → Logs tab. Look for `console.error` output.
+2. **Check the actual error**: Login route now logs `ErrorName: message` + full stack trace
+3. **PrismaClient init errors**: `lib/db.ts` detects adapter errors and prints version mismatch hint
+4. **Test Turso connectivity separately**: `turso db shell ai-role-chat ".tables"` to verify credentials work
+5. **Use `curl` from a Vercel-less context**: this isolates whether it's a Vercel issue or a code issue
+
+### After deployment, verify these endpoints
+
+```bash
+curl https://your-app.vercel.app/api/auth/login -H "Content-Type: application/json" -d '{"username":"123","password":"123"}'
+# Should return: {"ok":true,"role":"user"}
+
+curl https://your-app.vercel.app/api/characters
+# Should return: [...] (JSON array, even if empty)
+```
+
+### Prisma package version lock
+
+All three must stay on the same major version. `push.sh` enforces this before any push:
+
+```bash
+# Verify manually:
+node -e "const p = require('./package.json').dependencies; console.log('adapter:', p['@prisma/adapter-libsql']); console.log('client:', p['@prisma/client']); console.log('prisma:', p['prisma'])"
+# All should show same major: ^7.x.x
+```
+
+When upgrading: change all three together, run `npm install`, commit BOTH `package.json` and `package-lock.json`.
 
 ## SillyTavern Analysis Reference
 
