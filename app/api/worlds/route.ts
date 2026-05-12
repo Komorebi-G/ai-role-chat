@@ -69,8 +69,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json(book, { status: 201 });
   } catch (err) {
-    console.error("Create world book error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error("Create world book error:", message);
+    if (err instanceof Error && err.stack) {
+      console.error("Create world book error stack:", err.stack);
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -113,8 +117,12 @@ export async function PUT(req: Request) {
 
     return NextResponse.json(book);
   } catch (err) {
-    console.error("Update world book error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error("Update world book error:", message);
+    if (err instanceof Error && err.stack) {
+      console.error("Update world book error stack:", err.stack);
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -147,7 +155,11 @@ export async function DELETE(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("Delete world book error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error("Delete world book error:", message);
+    if (err instanceof Error && err.stack) {
+      console.error("Delete world book error stack:", err.stack);
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

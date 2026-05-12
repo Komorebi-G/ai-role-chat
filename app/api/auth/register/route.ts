@@ -53,7 +53,11 @@ export async function POST(req: Request) {
     });
     return res;
   } catch (err) {
-    console.error("Register error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error("Register error:", message);
+    if (err instanceof Error && err.stack) {
+      console.error("Register error stack:", err.stack);
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

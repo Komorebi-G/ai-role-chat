@@ -222,15 +222,14 @@ export default function ChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ characterId: selectedChar.id, title: t("conversation.newChat") }),
       });
-      if (res.ok) {
-        const conv = await res.json();
-        setConversations((prev) => [conv, ...prev]);
-        setActiveConversationId(conv.id);
-        setMessages([]);
-        setError("");
-        setDrawerOpen(false);
-      }
-    } catch { setError(t("chat.createChatFailed")); }
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || t("chat.createChatFailed")); return; }
+      setConversations((prev) => [data, ...prev]);
+      setActiveConversationId(data.id);
+      setMessages([]);
+      setError("");
+      setDrawerOpen(false);
+    } catch { setError(t("common.networkError")); }
   }
 
   async function handleSelectConversation(convId: string) {
@@ -436,7 +435,9 @@ export default function ChatPage() {
       } else {
         setCharForm({ id: char.id, name: char.name, description: char.description || "", personality: "", scenario: "", first_mes: char.firstMessage || "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "", creator_notes: "", tags: "" });
       }
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t("common.networkError");
+      setCharError(message);
       setCharForm({ id: char.id, name: char.name, description: char.description || "", personality: "", scenario: "", first_mes: char.firstMessage || "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "", creator_notes: "", tags: "" });
     }
     setShowCreateChar(true);

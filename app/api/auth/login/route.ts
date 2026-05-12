@@ -75,6 +75,6 @@ export async function POST(req: Request) {
     if (err instanceof Error && err.stack) {
       console.error("Login error stack:", err.stack);
     }
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

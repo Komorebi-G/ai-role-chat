@@ -79,8 +79,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json(character, { status: 201 });
   } catch (err) {
-    console.error("Create character error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error("Create character error:", message);
+    if (err instanceof Error && err.stack) {
+      console.error("Create character error stack:", err.stack);
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -136,7 +140,11 @@ export async function PUT(req: Request) {
 
     return NextResponse.json(merged);
   } catch (err) {
-    console.error("Update character error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error("Update character error:", message);
+    if (err instanceof Error && err.stack) {
+      console.error("Update character error stack:", err.stack);
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
