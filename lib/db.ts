@@ -13,6 +13,15 @@ function createPrismaClient(): PrismaClient {
       return new PrismaClient({ adapter });
     }
 
+    // Vercel production requires Turso — SQLite won't work (ephemeral filesystem)
+    if (process.env.VERCEL) {
+      throw new Error(
+        "Vercel production detected but TURSO_DATABASE_URL and/or TURSO_AUTH_TOKEN are not set. " +
+        "Set both in Vercel Dashboard → Settings → Environment Variables → Production. " +
+        "Then redeploy."
+      );
+    }
+
     // Local dev: use SQLite file via libsql adapter
     const dbUrl = process.env.DATABASE_URL || "file:./prisma/dev.db";
     const adapter = new PrismaLibSql({ url: dbUrl });
