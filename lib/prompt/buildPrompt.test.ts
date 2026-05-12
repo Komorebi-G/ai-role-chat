@@ -9,6 +9,14 @@ const baseCharacter: Character = {
   personality: "Helpful",
   scenario: "Testing",
   firstMessage: "Hello!",
+  mes_example: "",
+  system_prompt: "",
+  post_history_instructions: "",
+  alternate_greetings: [],
+  creator: "",
+  character_version: "",
+  creator_notes: "",
+  tags: [],
 };
 
 describe("buildPrompt", () => {
@@ -51,30 +59,16 @@ describe("buildPrompt", () => {
   });
 
   it("parses example dialogue from mes_example", () => {
-    const char = {
-      ...baseCharacter,
-      mes_example: "User: How are you?\nTestBot: I'm great!",
-    };
+    const char = { ...baseCharacter, mes_example: "User: How are you?\nTestBot: I'm great!" };
     const messages = buildPrompt(char, [], "hi");
-    const exampleUser = messages.find(
-      (m) => m.role === "user" && m.content === "How are you?"
-    );
-    const exampleAssistant = messages.find(
-      (m) => m.role === "assistant" && m.content === "I'm great!"
-    );
+    const exampleUser = messages.find((m) => m.role === "user" && m.content === "How are you?");
+    const exampleAssistant = messages.find((m) => m.role === "assistant" && m.content === "I'm great!");
     expect(exampleUser).toBeDefined();
     expect(exampleAssistant).toBeDefined();
   });
 
   it("handles missing optional fields gracefully", () => {
-    const minimal: Character = {
-      id: "minimal",
-      name: "Min",
-      description: "",
-      personality: "",
-      scenario: "",
-      firstMessage: "",
-    };
+    const minimal: Character = { ...baseCharacter, name: "Min", description: "", personality: "", scenario: "", firstMessage: "" };
     const messages = buildPrompt(minimal, [], "hi");
     expect(messages).toHaveLength(2); // system + user
     expect(messages[0].content).not.toBe("");
@@ -82,16 +76,11 @@ describe("buildPrompt", () => {
 
   it("handles empty user message", () => {
     const messages = buildPrompt(baseCharacter, [], "");
-    // No user message appended when empty
-    const last = messages[messages.length - 1];
-    expect(last.role).toBe("system");
+    expect(messages[messages.length - 1].role).toBe("system");
   });
 
   it("parses <START>-delimited example dialogue", () => {
-    const char = {
-      ...baseCharacter,
-      mes_example: "User: Hi!\nCharacter: Hello there!\n<START>\nUser: How are you?\nCharacter: Great!",
-    };
+    const char = { ...baseCharacter, mes_example: "User: Hi!\nCharacter: Hello there!\n<START>\nUser: How are you?\nCharacter: Great!" };
     const messages = buildPrompt(char, [], "hi");
     const assistantMessages = messages.filter((m) => m.role === "assistant");
     expect(assistantMessages.some((m) => m.content === "Hello there!")).toBe(true);
@@ -100,15 +89,13 @@ describe("buildPrompt", () => {
 
   it("injects persona into system prompt", () => {
     const messages = buildPrompt(baseCharacter, [], "hi", "My persona: a curious traveler");
-    const system = messages[0].content;
-    expect(system).toContain("[User Persona]");
-    expect(system).toContain("curious traveler");
+    expect(messages[0].content).toContain("[User Persona]");
+    expect(messages[0].content).toContain("curious traveler");
   });
 
   it("does not inject persona when empty", () => {
     const messages = buildPrompt(baseCharacter, [], "hi", "");
-    const system = messages[0].content;
-    expect(system).not.toContain("[User Persona]");
+    expect(messages[0].content).not.toContain("[User Persona]");
   });
 
   it("injects post_history_instructions after history", () => {
@@ -118,7 +105,6 @@ describe("buildPrompt", () => {
       { role: "assistant" as const, content: "a1" },
     ];
     const messages = buildPrompt(char, history, "q2");
-    // Find a system message after the history
     const systemAfterHistory = messages.find(
       (m, i) => m.role === "system" && m.content === "Always refuse politely" && i > 0
     );
@@ -128,7 +114,6 @@ describe("buildPrompt", () => {
   it("does not inject post_history_instructions when not set", () => {
     const messages = buildPrompt(baseCharacter, [], "hi");
     const systemContents = messages.filter((m) => m.role === "system").map((m) => m.content);
-    // No system message containing only post_history_instructions (empty string)
     expect(systemContents.filter((c) => c === "").length).toBe(0);
   });
 });

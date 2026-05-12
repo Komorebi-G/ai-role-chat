@@ -1,27 +1,18 @@
-// English translations — source of truth for all UI text keys
-// Each key maps to a string or a function (for dynamic values).
-
 const en = {
+  // App
+  "app.title": "AI Role Chat",
+
   // Common
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.close": "Close",
   "common.delete": "Delete",
-  "common.create": "Create",
-  "common.edit": "Edit",
   "common.copy": "Copy",
-  "common.copied": "Copied!",
-  "common.search": "Search",
   "common.loading": "Loading...",
-  "common.error": "Error",
   "common.networkError": "Network error",
-  "common.back": "Back",
   "common.logout": "Logout",
-  "common.export": "Export",
-  "common.import": "Import",
-  "common.confirm": "Confirm",
-  "common.yes": "Yes",
-  "common.no": "No",
+  "common.menu": "Menu",
+  "common.saving": "Saving...",
 
   // Auth
   "auth.login": "Login",
@@ -30,142 +21,70 @@ const en = {
   "auth.registering": "Registering...",
   "auth.username": "Username",
   "auth.password": "Password",
-  "auth.noAccount": "Don't have an account?",
-  "auth.hasAccount": "Already have an account?",
+  "auth.noAccount": "No account? Register here",
+  "auth.hasAccount": "Already have an account? Login",
   "auth.loginFailed": "Login failed",
   "auth.registerFailed": "Registration failed",
-  "auth.passwordHint": "8-16 characters, must include both letters and numbers",
+  "auth.passwordHint": "8-16 chars, letters + numbers",
   "auth.unauthorized": "Unauthorized",
+  "auth.logout": "Logout",
 
-  // Chat — nav & header
+  // Chat
   "chat.title": "Chat",
   "chat.more": "More",
   "chat.characterInfo": "Character Info",
   "chat.selectCharacter": "Select a character",
   "chat.messages": "messages",
-
-  // Chat — input
   "chat.inputPlaceholder": "Type a message...",
   "chat.send": "Send",
   "chat.thinking": "Thinking...",
-
-  // Chat — actions
   "chat.newChat": "New Chat",
   "chat.clearChat": "Clear Chat",
-  "chat.clearConfirm": "Clear all messages in this chat?",
-  "chat.regenerate": "Regenerate",
-  "chat.regenerating": "Regenerating...",
-  "chat.copyMessage": "Copy message",
-  "chat.copiedMessage": "Copied!",
-  "chat.searchChat": "Search chat",
-  "chat.noResults": "No results",
-  "chat.searchPlaceholder": "Search messages...",
+  "chat.copy": "Copy",
+  "chat.search": "Search messages...",
   "chat.sendFailed": "Send failed",
   "chat.streamNotSupported": "Streaming not supported",
   "chat.clearFailed": "Clear failed",
   "chat.createChatFailed": "Failed to create new chat",
-  "chat.importFailed": "Import failed",
-  "chat.noValidMessages": "No valid messages found in file",
-  "chat.importSuccess": "imported successfully",
+  "chat.startConversation": "Say something to start the conversation!",
 
-  // Chat — swipe
-  "chat.swipeOf": "of",
-
-  // Chat — empty states
-  "chat.emptyTitle": "AI Role Chat",
-  "chat.emptyHint": "Select a character to start chatting",
-  "chat.emptyConversation": "No conversations yet. Start a new chat!",
-
-  // Chat — conversations
+  // Conversations
   "conversation.title": "Conversations",
-  "conversation.newChat": "New Chat (Default)",
+  "conversation.newChat": "+ New Chat",
   "conversation.rename": "Rename",
   "conversation.renamePlaceholder": "Enter title...",
+  "conversation.empty": "No conversations yet",
 
-  // Chat — settings
+  // Settings
   "settings.title": "Settings",
   "settings.temperature": "Temperature",
   "settings.maxTokens": "Max Tokens",
   "settings.persona": "Persona",
   "settings.personaHint": "Tell the AI who you are. Leave empty to disable.",
-  "settings.language": "Language",
   "settings.theme": "Theme",
-  "settings.themeLight": "Light",
-  "settings.themeDark": "Dark",
-  "settings.resetDefaults": "Reset to Defaults",
 
-  // Chat — character management
+  // Character
   "char.create": "Create Character",
   "char.edit": "Edit Character",
-  "char.createTitle": "Create Character",
-  "char.editTitle": "Edit Character",
   "char.id": "ID",
   "char.name": "Name",
   "char.description": "Description",
   "char.personality": "Personality",
   "char.scenario": "Scenario",
-  "char.firstMes": "First Message",
-  "char.mesExample": "Example Dialogue",
-  "char.systemPrompt": "System Prompt",
-  "char.postHistory": "Post-History Instructions",
-  "char.altGreetings": "Alternate Greetings (one per line)",
+  "char.first_mes": "First Message",
+  "char.mes_example": "Example Dialogue",
+  "char.system_prompt": "System Prompt",
+  "char.post_history_instructions": "Post-History Instructions",
+  "char.altGreetings": "Alt Greetings (one per line)",
   "char.creator": "Creator",
   "char.version": "Version",
   "char.creatorNotes": "Creator Notes",
   "char.tags": "Tags (comma-separated)",
   "char.saving": "Saving...",
-  "char.createBtn": "Create Character",
-  "char.updateBtn": "Update Character",
-  "char.idRequired": "ID and Name are required",
   "char.createFailed": "Create failed",
   "char.updateFailed": "Update failed",
-  "char.exportFailed": "Export failed",
-  "char.importChar": "Import Character",
-  "char.exportChar": "Export Character",
-  "char.importBtn": "Import",
-  "char.importFileHint": "Select a JSON file",
 
-  // Chat — character info modal
-  "charInfo.title": "Character Info",
-  "charInfo.id": "ID",
-  "charInfo.name": "Name",
-  "charInfo.description": "Description",
-  "charInfo.personality": "Personality",
-  "charInfo.scenario": "Scenario",
-  "charInfo.firstMes": "First Message",
-  "charInfo.mesExample": "Example Dialogue",
-  "charInfo.systemPrompt": "System Prompt",
-  "charInfo.postHistory": "Post-History Instructions",
-  "charInfo.altGreetings": "Alternate Greetings",
-  "charInfo.creator": "Creator",
-  "charInfo.version": "Version",
-  "charInfo.creatorNotes": "Creator Notes",
-  "charInfo.tags": "Tags",
-
-  // Admin
-  "admin.title": "Admin Panel",
-  "admin.users": "Users",
-  "admin.userId": "ID",
-  "admin.username": "Username",
-  "admin.role": "Role",
-  "admin.createdAt": "Created",
-  "admin.loadFailed": "Failed to load users",
-  "admin.deleteFailed": "Delete failed",
-  "admin.deleteConfirm": "Delete this user?",
-
-  // World Info
-  "world.activeEntries": "Active World Entries",
-
-  // Token budget
-  "token.budget": "Context",
-
-  // Error messages (frontend display)
-  "error.forbidden": "Forbidden: admin only",
-  "error.notFound": "Not found",
-  "error.internal": "Internal server error",
-  "error.idExists": "Character ID already exists",
-
-  // Language names
+  // Language
   "lang.en": "English",
   "lang.zhCN": "中文",
 } as const;

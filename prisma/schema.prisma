@@ -16,6 +16,25 @@ model User {
   conversations Conversation[]
 }
 
+model Character {
+  id                      String   @id
+  name                    String
+  description             String   @default("")
+  personality             String   @default("")
+  scenario                String   @default("")
+  firstMessage            String   @default("")
+  mes_example             String   @default("")
+  system_prompt           String   @default("")
+  post_history_instructions String @default("")
+  alternate_greetings     String   @default("[]")
+  creator                 String   @default("")
+  character_version       String   @default("")
+  creator_notes           String   @default("")
+  tags                    String   @default("[]")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
 model Conversation {
   id          String    @id @default(uuid())
   userId      String
@@ -34,8 +53,6 @@ model Message {
   conversationId String
   role           String
   content        String
-  swipes         String   @default("[]") // JSON array of reply variants for assistant messages
-  swipeId        Int      @default(0)    // Index of currently selected swipe
   createdAt      DateTime @default(now())
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)

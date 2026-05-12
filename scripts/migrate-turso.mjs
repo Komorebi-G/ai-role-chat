@@ -44,6 +44,11 @@ async function isMigrationAlreadyApplied(migrationName, client) {
       const r = await client.execute(`SELECT 1 FROM pragma_table_info('Message') WHERE name='swipes'`);
       return r.rows.length > 0;
     }
+    case "20260512031508_init_new_schema": {
+      // Check if Character table exists
+      const r = await client.execute(`SELECT name FROM sqlite_master WHERE type='table' AND name='Character'`);
+      return r.rows.length > 0;
+    }
     default:
       return false;
   }

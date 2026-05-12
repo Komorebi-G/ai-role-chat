@@ -1,25 +1,22 @@
 import { NextResponse } from "next/server";
-import { getSession, DEMO_USER_ID } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 export async function GET() {
-  const userId = await getSession();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const userId = await getSession();
+    if (!userId) return NextResponse.json({ role: null }, { status: 401 });
+
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true },
+    });
+
+    if (!user) return NextResponse.json({ role: null }, { status: 401 });
+    return NextResponse.json({ userId: user.id, role: user.role });
+  } catch (err) {
+    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error("Me error:", message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  if (userId === DEMO_USER_ID) {
-    return NextResponse.json({ userId: DEMO_USER_ID, role: "user" });
-  }
-
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { id: true, role: true },
-  });
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  return NextResponse.json({ userId: user.id, role: user.role });
 }

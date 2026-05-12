@@ -1,26 +1,57 @@
-# TODO
+现在不要添加新功能。
 
-## Vercel Cloud Reliability (ongoing)
+请进入“Vercel 上线验收模式”。
 
-- [ ] **Character CRUD uses `fs.writeFileSync`** — works locally, fails on Vercel Serverless (no writable filesystem). Characters created/edited via admin panel won't persist after deploy. Options: migrate to DB-backed character storage, or make file-based ops Vercel-compatible via Turso/blob storage.
-- [ ] **Demo account is fully in-memory** (`lib/demo-store.ts`) — `Map`-based storage lost on cold start, not shared across Vercel instances. Demo conversations/messages disappear unpredictably in production.
-- [ ] **Rate limiting is in-memory** (`lib/ai.ts`) — per-instance sliding window. Multiple Vercel instances each have independent counters, so effective rate limit = 30 × N instances, not 30.
+目标：确认当前瘦身后的 MVP 是否真的可以稳定部署到 Vercel。
 
-## Features (P1)
+你需要完成：
 
-- [ ] **Swipe UI navigation** — data structure exists (swipes JSON array + swipeId in DB), but frontend needs ◂ N/M ▸ controls for switching between reply variants on assistant messages.
-- [ ] **World Info frontend management** — world books can only be created/edited via API or direct JSON editing. Needs a UI panel for managing world entries (add/edit/delete keys and content).
+1. 检查所有生产环境必需环境变量：
 
-## Features (P2)
+   * JWT_SECRET
+   * DEEPSEEK_API_KEY
+   * TURSO_DATABASE_URL
+   * TURSO_AUTH_TOKEN
 
-- [ ] **PNG character cards** — embed character JSON in PNG tEXt chunk, import/export character cards as images (V1 SillyTavern spec).
-- [ ] **Real tokenizer** — replace character-count estimation in `lib/chat/context.ts` with `tiktoken` or DeepSeek-compatible tokenizer for accurate context budget management.
-- [ ] **Prompt debug panel** — frontend panel showing the fully assembled system prompt sent to the AI, with per-layer token counts. Essential for debugging prompt assembly.
-- [ ] **Advanced World Info** — recursion (matched entries can trigger other entries), sticky (pin entries for N turns), cooldown (prevent re-triggering for N turns).
-- [ ] **Multi-character group chat** — select multiple characters, AI responds in-character for each, user messages addressed to all.
-- [ ] **Plugin system** — extension points for custom prompt transformers, UI components, API middleware.
+2. 检查 Prisma / Turso 配置：
 
-## Polish
+   * schema 是否适合 Turso；
+   * migration 是否完整；
+   * Vercel build 时是否会生成 Prisma Client；
+   * 生产环境是否不会误用 SQLite；
+   * 是否存在 Prisma 7 / adapter / datasource 不兼容问题。
 
-- [ ] **Mobile PWA** — service worker, offline support, install prompt.
-- [ ] **i18n** — full translation coverage (currently partial: login page and basic UI strings in `lib/i18n/`).
+3. 创建一个 `DEPLOY_CHECKLIST.md`：
+   内容包括：
+
+   * Vercel 必填环境变量；
+   * Turso 初始化步骤；
+   * 数据库迁移步骤；
+   * 部署后手动验收步骤；
+   * 常见错误与排查方式。
+
+4. 创建或完善一个生产环境健康检查 API：
+
+   * `/api/health`
+   * 返回数据库连接状态；
+   * 返回环境变量是否存在，但不要泄露具体值；
+   * 返回当前 runtime 信息；
+   * 出错时返回明确错误。
+
+5. 执行完整验证：
+
+   * npm run typecheck
+   * npm run lint
+   * npm run test
+   * npm run build
+
+6. 最后输出：
+
+   * 当前是否可以部署；
+   * 还缺哪些 Vercel 配置；
+   * 生产环境最可能失败在哪里；
+   * 部署后应该如何手动测试。
+
+禁止添加新业务功能。
+禁止继续扩展聊天系统。
+这轮只做上线验收和云端稳定性检查。
