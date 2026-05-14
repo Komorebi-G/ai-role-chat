@@ -44,6 +44,26 @@ async function isMigrationAlreadyApplied(migrationName, client) {
       const r = await client.execute(`SELECT 1 FROM pragma_table_info('Message') WHERE name='swipes'`);
       return r.rows.length > 0;
     }
+    case "20260512074612_add_asset_table": {
+      // Check if Asset table exists
+      const r = await client.execute(`SELECT name FROM sqlite_master WHERE type='table' AND name='Asset'`);
+      return r.rows.length > 0;
+    }
+    case "20260512083352_add_world_state_to_conversation": {
+      // Check if Conversation table has the "worldState" column
+      const r = await client.execute(`SELECT 1 FROM pragma_table_info('Conversation') WHERE name='worldState'`);
+      return r.rows.length > 0;
+    }
+    case "20260512085351_add_rate_limit_table": {
+      // Check if RateLimit table exists
+      const r = await client.execute(`SELECT name FROM sqlite_master WHERE type='table' AND name='RateLimit'`);
+      return r.rows.length > 0;
+    }
+    case "20260512102757_add_group_chat_to_conversation": {
+      // Check if Conversation table has the "type" column
+      const r = await client.execute(`SELECT 1 FROM pragma_table_info('Conversation') WHERE name='type'`);
+      return r.rows.length > 0;
+    }
     default:
       return false;
   }

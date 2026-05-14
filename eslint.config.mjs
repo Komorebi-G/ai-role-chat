@@ -25,6 +25,18 @@ export default [
     },
   },
   {
+    files: ["public/sw.js"],
+    languageOptions: {
+      globals: {
+        self: "readonly",
+        caches: "readonly",
+        fetch: "readonly",
+        Response: "readonly",
+        URL: "readonly",
+      },
+    },
+  },
+  {
     ignores: [".next/", "node_modules/", "next-env.d.ts", "scripts/"],
   },
 ];

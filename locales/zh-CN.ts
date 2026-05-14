@@ -70,16 +70,33 @@ const zhCN = {
   // Chat — swipe
   "chat.swipeOf": "/",
 
+  // Chat — time labels
+  "chat.timeNow": "刚刚",
+  "chat.timeMinutesAgo": "{n}分钟前",
+  "chat.timeToday": "今天",
+  "chat.timeYesterday": "昨天",
+
   // Chat — empty states
   "chat.emptyTitle": "AI 角色聊天",
   "chat.emptyHint": "选择一个角色开始聊天",
   "chat.emptyConversation": "还没有对话记录，开始新聊天吧！",
+  "chat.emptyMessages": "暂无消息，打个招呼吧！",
+  "chat.loadingConversations": "加载会话中...",
+  "chat.loadingMessages": "加载消息中...",
 
   // Chat — conversations
   "conversation.title": "会话列表",
   "conversation.newChat": "新对话（默认）",
   "conversation.rename": "重命名",
   "conversation.renamePlaceholder": "输入标题...",
+
+  // Group chat
+  "group.title": "群聊",
+  "group.selectCharacters": "选择群聊角色",
+  "group.start": "开始群聊",
+  "group.addCharacter": "加入群聊",
+  "group.removeCharacter": "移除",
+  "group.selectedCount": "已选择 {n} 个角色",
 
   // Chat — settings
   "settings.title": "设置",
@@ -99,6 +116,8 @@ const zhCN = {
   "char.createTitle": "创建角色",
   "char.editTitle": "编辑角色",
   "char.id": "ID",
+  "char.avatar": "头像",
+  "char.removeAvatar": "移除",
   "char.name": "名称",
   "char.description": "描述",
   "char.personality": "性格",
@@ -122,7 +141,9 @@ const zhCN = {
   "char.importChar": "导入角色",
   "char.exportChar": "导出角色",
   "char.importBtn": "导入",
-  "char.importFileHint": "选择一个 JSON 文件",
+  "char.importFileHint": "选择一个 JSON 或 PNG 文件",
+  "char.importCardFailed": "导入角色卡失败",
+  "char.cardImported": "角色卡已导入",
 
   // Chat — character info modal
   "charInfo.title": "角色信息",
@@ -154,6 +175,33 @@ const zhCN = {
 
   // World Info
   "world.activeEntries": "已激活世界书条目",
+  "world.manage": "世界书管理",
+  "world.title": "世界书",
+  "world.create": "创建世界书",
+  "world.edit": "编辑世界书",
+  "world.name": "名称",
+  "world.description": "描述",
+  "world.entries": "条目",
+  "world.entryKey": "关键词（逗号分隔）",
+  "world.entryContent": "内容",
+  "world.entryPosition": "位置",
+  "world.entryPositionBefore": "角色信息前",
+  "world.entryPositionAfter": "角色信息后",
+  "world.entryOrder": "排序",
+  "world.entryEnabled": "启用",
+  "world.addEntry": "添加条目",
+  "world.editEntry": "编辑条目",
+  "world.noEntries": "暂无条目",
+  "world.noBooks": "暂无世界书",
+  "world.deleteConfirm": "确认删除此世界书？",
+  "world.saveFailed": "保存失败",
+  "world.deleteFailed": "删除失败",
+  "world.loadFailed": "加载失败",
+
+  // Prompt debug
+  "promptDebug.title": "提示词调试",
+  "promptDebug.copyFull": "复制完整提示词",
+  "promptDebug.show": "提示词调试",
 
   // Token budget
   "token.budget": "上下文",

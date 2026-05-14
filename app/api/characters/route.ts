@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { getAllCharacters, getCharacter, reloadCharacters, getCharacterFilePath } from "@/lib/character";
+import { getAllCharacters, getCharacter, saveCharacter, characterExists, getCharacterJson } from "@/lib/character";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
-import fs from "fs";
-import path from "path";
+import { generateCharacterCard } from "@/lib/character-card";
 
 export async function GET(req: Request) {
   try {
@@ -17,16 +16,36 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
+  const format = searchParams.get("format");
 
   if (id) {
-    const character = getCharacter(id);
+    const character = await getCharacter(id);
     if (!character) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+
+    // PNG character card export
+    if (format === "png") {
+      const cardData = await getCharacterJson(id) || character;
+      // Use avatar image as the card image if available
+      let imageBuffer: Buffer | undefined;
+      const avatar = (cardData as Record<string, unknown>).avatar as string | undefined;
+      if (avatar && avatar.startsWith("data:image/png;base64,")) {
+        imageBuffer = Buffer.from(avatar.slice("data:image/png;base64,".length), "base64");
+      }
+      const pngBuffer = generateCharacterCard(cardData as Record<string, unknown>, imageBuffer);
+      return new NextResponse(new Uint8Array(pngBuffer), {
+        headers: {
+          "Content-Type": "image/png",
+          "Content-Disposition": `attachment; filename="${character.id}.png"`,
+        },
+      });
+    }
+
     return NextResponse.json(character);
   }
 
-  return NextResponse.json(getAllCharacters());
+  return NextResponse.json(await getAllCharacters());
 }
 
 export async function POST(req: Request) {
@@ -47,8 +66,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "id and name are required" }, { status: 400 });
     }
 
-    const character = {
-      id: body.id.trim(),
+    const characterId = body.id.trim();
+
+    if (await characterExists(characterId)) {
+      return NextResponse.json({ error: "Character ID already exists" }, { status: 409 });
+    }
+
+    const character: Record<string, unknown> = {
+      id: characterId,
       name: body.name.trim(),
       description: body.description?.trim() || "",
       personality: body.personality?.trim() || "",
@@ -63,19 +88,9 @@ export async function POST(req: Request) {
       creator_notes: body.creator_notes?.trim() || "",
       tags: Array.isArray(body.tags) ? body.tags : [],
     };
+    if (body.avatar) character.avatar = body.avatar;
 
-    const dir = path.join(process.cwd(), "characters");
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    const filepath = path.join(dir, `${character.id}.json`);
-    if (fs.existsSync(filepath)) {
-      return NextResponse.json({ error: "Character ID already exists" }, { status: 409 });
-    }
-
-    fs.writeFileSync(filepath, JSON.stringify(character, null, 2), "utf-8");
-    reloadCharacters();
+    await saveCharacter(characterId, character);
 
     return NextResponse.json(character, { status: 201 });
   } catch (err) {
@@ -109,16 +124,12 @@ export async function PUT(req: Request) {
     const { searchParams } = new URL(req.url);
     const characterId = searchParams.get("id") || body.id;
 
-    const filepath = getCharacterFilePath(characterId);
-    if (!filepath) {
+    const existing = await getCharacterJson(characterId);
+    if (!existing) {
       return NextResponse.json({ error: "Character not found" }, { status: 404 });
     }
 
-    // Read existing file and merge to prevent data loss from partial updates
-    const existingRaw = fs.readFileSync(filepath, "utf-8");
-    const existing = JSON.parse(existingRaw);
-
-    const merged = {
+    const merged: Record<string, unknown> = {
       id: characterId,
       name: body.name?.trim() || existing.name || "",
       description: body.description?.trim() ?? existing.description ?? "",
@@ -134,9 +145,14 @@ export async function PUT(req: Request) {
       creator_notes: body.creator_notes?.trim() ?? existing.creator_notes ?? "",
       tags: Array.isArray(body.tags) ? body.tags : (existing.tags || []),
     };
+    // Preserve existing avatar, allow override
+    if (body.avatar !== undefined) {
+      merged.avatar = body.avatar;
+    } else if (existing.avatar) {
+      merged.avatar = existing.avatar;
+    }
 
-    fs.writeFileSync(filepath, JSON.stringify(merged, null, 2), "utf-8");
-    reloadCharacters();
+    await saveCharacter(characterId, merged);
 
     return NextResponse.json(merged);
   } catch (err) {

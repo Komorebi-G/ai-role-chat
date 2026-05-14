@@ -1,26 +1,27 @@
-# TODO
+1. 我刚刚开了一个群聊，发送了几条消息，发现有概率出现一个问题（有时出现有时没有）：最后一个人的消息发送出来后，消息框显
+  示会有问题，显示为空消息框（刷新也是如此），但是复制消息能够复制那条消息，说明是前端显示有问题。修复这个bug
 
-## Vercel Cloud Reliability (ongoing)
+2. 使用 frontend-design plugin，把当前 AI 角色聊天项目优化成更接近微信的聊天界面。
 
-- [ ] **Character CRUD uses `fs.writeFileSync`** — works locally, fails on Vercel Serverless (no writable filesystem). Characters created/edited via admin panel won't persist after deploy. Options: migrate to DB-backed character storage, or make file-based ops Vercel-compatible via Turso/blob storage.
-- [ ] **Demo account is fully in-memory** (`lib/demo-store.ts`) — `Map`-based storage lost on cold start, not shared across Vercel instances. Demo conversations/messages disappear unpredictably in production.
-- [ ] **Rate limiting is in-memory** (`lib/ai.ts`) — per-instance sliding window. Multiple Vercel instances each have independent counters, so effective rate limit = 30 × N instances, not 30.
+目标风格：
+- 简洁、克制、熟悉
+- 类微信聊天页：顶部会话栏、中间消息流、底部输入栏
+- 用户消息靠右，角色消息靠左
+- 气泡圆角、间距、头像尺寸、字体大小接近微信
+- 会话列表像微信聊天列表：头像、昵称、最后一条消息、时间、未读/状态
+- 角色卡/联系人页接近微信联系人/资料页，而不是欧美卡片风
 
-## Features (P1)
+重点优化：
+1. 聊天页消息气泡、头像、时间分隔、输入栏
+2. 会话列表的信息层级
+3. 移动端体验，尤其底部输入框和键盘弹起
+4. 空状态、loading、发送中、失败重试
+5. 深色模式也要保持微信式克制
 
-- [ ] **Swipe UI navigation** — data structure exists (swipes JSON array + swipeId in DB), but frontend needs ◂ N/M ▸ controls for switching between reply variants on assistant messages.
-- [ ] **World Info frontend management** — world books can only be created/edited via API or direct JSON editing. Needs a UI panel for managing world entries (add/edit/delete keys and content).
-
-## Features (P2)
-
-- [ ] **PNG character cards** — embed character JSON in PNG tEXt chunk, import/export character cards as images (V1 SillyTavern spec).
-- [ ] **Real tokenizer** — replace character-count estimation in `lib/chat/context.ts` with `tiktoken` or DeepSeek-compatible tokenizer for accurate context budget management.
-- [ ] **Prompt debug panel** — frontend panel showing the fully assembled system prompt sent to the AI, with per-layer token counts. Essential for debugging prompt assembly.
-- [ ] **Advanced World Info** — recursion (matched entries can trigger other entries), sticky (pin entries for N turns), cooldown (prevent re-triggering for N turns).
-- [ ] **Multi-character group chat** — select multiple characters, AI responds in-character for each, user messages addressed to all.
-- [ ] **Plugin system** — extension points for custom prompt transformers, UI components, API middleware.
-
-## Polish
-
-- [ ] **Mobile PWA** — service worker, offline support, install prompt.
-- [ ] **i18n** — full translation coverage (currently partial: login page and basic UI strings in `lib/i18n/`).
+约束：
+- 不要做花哨渐变、玻璃拟态、夸张动画
+- 不要改成 Discord / Character.AI / ChatGPT 风格
+- 不要大规模重写业务逻辑
+- 优先复用现有组件和 Tailwind
+- 修改后运行 lint/build/typecheck
+- 不要停下来问我确认，直接完成一轮可验证优化

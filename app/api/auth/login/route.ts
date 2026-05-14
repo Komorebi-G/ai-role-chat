@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { createToken, DEMO_USER_ID } from "@/lib/auth";
+import { createToken } from "@/lib/auth";
 
 export async function POST(req: Request) {
   try {
@@ -11,10 +12,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Username and password required" }, { status: 400 });
     }
 
-    // Demo account: bypass database
+    // Demo account: create DB-backed user tied to browser session cookie
     if (username === "123" && password === "123") {
-      const token = await createToken(DEMO_USER_ID);
-      const demoSessionId = crypto.randomUUID();
+      const cookieStore = await cookies();
+      let sessionId = cookieStore.get("demo_sid")?.value;
+      if (!sessionId) sessionId = crypto.randomUUID();
+
+      // Each demo browser session gets its own DB user, isolated per browser
+      const demoUsername = `demo_${sessionId.slice(0, 8)}`;
+      let demoUser = await db.user.findUnique({ where: { username: demoUsername } });
+      if (!demoUser) {
+        const passwordHash = await bcrypt.hash(sessionId, 10);
+        demoUser = await db.user.create({
+          data: { username: demoUsername, passwordHash, role: "user" },
+        });
+      }
+
+      const token = await createToken(demoUser.id);
       const res = NextResponse.json({ ok: true, role: "user" });
       const cookieOpts = {
         httpOnly: true,
@@ -24,7 +38,7 @@ export async function POST(req: Request) {
         path: "/",
       };
       res.cookies.set("token", token, cookieOpts);
-      res.cookies.set("demo_sid", demoSessionId, cookieOpts);
+      res.cookies.set("demo_sid", sessionId, cookieOpts);
       return res;
     }
 

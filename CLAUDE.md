@@ -10,7 +10,8 @@ npm run dev                    # Start dev server (port 3000)
 npm run build                  # Production build (migrate-turso + next build)
 npm run lint                   # ESLint (flat config: eslint .)
 npm run typecheck              # tsc --noEmit
-npm run test                   # vitest run (25 tests, 3 files)
+npm run test                   # vitest run (41 tests, 4 files)
+npx vitest run --pool=forks    # Fork pool (avoids SQLite concurrency timeouts)
 npx vitest                     # Watch mode
 npx vitest run <path>          # Run a single test file
 npx prisma migrate dev         # Apply pending migrations + regenerate client
@@ -56,39 +57,57 @@ This project is evolving toward a **SillyTavern-inspired AI role-play chat platf
 
 Both paths use `@prisma/adapter-libsql`, so the Prisma Client API is identical — queries, relations, cascades work the same. The difference is only the underlying connection.
 
-Prisma schema has three models:
+Prisma schema has five models (sixth `RateLimit` not listed — see below):
 - **User** — id, username (unique), passwordHash (bcrypt), role (default `"user"`), createdAt. Has `messages[]` and `conversations[]` relations, both cascade on delete.
-- **Conversation** — id, userId, characterId, title (default "New Chat"), createdAt. Has `messages[]`.
-- **Message** — id, userId, characterId, conversationId, role, content, createdAt. Cascade-deletes with both User and Conversation.
+- **Conversation** — id, userId, characterId, title (default "New Chat"), worldState (JSON, default `"{}"`, stores `WorldState` { sticky, cooldown } for World Info tracking), type ("single" default, or "group"), characterIds (JSON string array for group chats), createdAt. Has `messages[]`.
+- **Message** — id, userId, characterId, conversationId, role, content, swipes (JSON string array of reply variants), swipeId (current index), createdAt. Cascade-deletes with both User and Conversation.
+- **Asset** — id, type ("character" or "world"), data (JSON string), createdAt, updatedAt. Stores character/world JSON blobs, replacing filesystem-based storage for Vercel compatibility. Auto-seeded from `characters/` and `worlds/` directories on first load when DB is empty.
+- **RateLimit** — id, userId (unique), requestCount, windowStart. DB-backed sliding-window rate limiting for cross-instance coordination on Vercel. `lib/ai.ts` also keeps an in-memory fast path to skip DB calls within the same instance.
 
 ### Auth flow
 
 `lib/auth.ts` — JWT via `jose`. Token in `token` httpOnly cookie (7-day expiry). Exports:
 - `requireAuth()` — throws `"Unauthorized"` if no session.
 - `getSession()` — returns userId or null without throwing.
-- `DEMO_USER_ID = "demo"` — reserved ID for the demo account.
+
+**Auth endpoints:**
+- `POST /api/auth/login` — `{ username, password }` → sets `token` httpOnly cookie (7-day JWT)
+- `POST /api/auth/logout` — clears `token` cookie
+- `GET /api/auth/me` — returns current user info from session
+- `POST /api/auth/register` — create new user account
 
 **Hardcoded accounts** in `app/api/auth/login/route.ts`:
-- **Demo** — `123` / `123`. Fully in-memory (Map-based), isolated per browser via `demo_sid` cookie. Ephemeral — lost on server restart.
+- **Demo** — `123` / `123`. Creates a DB-backed user (`demo_<sessionId>`), isolated per browser via `demo_sid` cookie. Data persists across cold starts and Vercel instances.
 - **Admin** — `lbh` / `lbh`. Auto-created in DB on first login with `role: "admin"`.
+
+### i18n
+
+`lib/i18n/index.tsx` — React context provider with `useLocale()` and `useTranslation()` hooks. Supports `"en"` (default) and `"zh-CN"`. Language detection: checks `localStorage("locale")` first, then `navigator.language` (starts with "zh" → zh-CN, else en). Translation strings in `locales/en.ts` and `locales/zh-CN.ts` (flat key-value maps). Frontend components use `<T key="..." />` shorthand.
 
 ### AI pipeline
 
 ```
-app/api/chat/ → lib/prompt/buildPrompt.ts → lib/chat/context.ts → lib/ai.ts → lib/deepseek.ts → api.deepseek.com/v1/chat/completions
+app/api/chat/ → lib/prompt/buildPrompt.ts → lib/chat/context.ts → lib/tokenizer.ts → lib/ai.ts → lib/deepseek.ts → api.deepseek.com/v1/chat/completions
 ```
 
 - **`lib/deepseek.ts`**: raw fetch to DeepSeek API (model: `deepseek-v4-flash`, temp 0.8, max_tokens 1024). Two exports: `chatWithDeepSeek(messages, signal?, options?)` and `chatWithDeepSeekStream(messages, signal?, options?)` (async generator for SSE streaming via `ReadableStream.getReader()`). Both accept optional `AbortSignal` and `ModelOptions` (temperature, maxTokens).
-- **`lib/ai.ts`**: wraps DeepSeek with in-memory per-user rate limiting (30 req/min sliding window) and 30-second `AbortController` timeout. Two async exports: `aiChat()` and `aiChatStream()`.
-- **`lib/prompt/buildPrompt.ts`**: layered prompt assembly — system rules → user persona → world info (before) → character system_prompt → character card info → world info (after) → example dialogue → trimmed history → post_history_instructions → user input. Output as `ChatMessage[]`.
+- **`lib/ai.ts`**: wraps DeepSeek with DB-backed per-user rate limiting (30 req/min sliding window, `RateLimit` table) plus an in-memory fast path, and 30-second `AbortController` timeout. Two async exports: `aiChat()` and `aiChatStream()`.
+- **`lib/prompt/buildPrompt.ts`**: async layered prompt assembly — system rules → user persona → world info (before) → character system_prompt → character card info → world info (after) → example dialogue → trimmed history → post_history_instructions → user input. Accepts optional `worldBefore`/`worldAfter` arrays (pre-computed by the chat route to avoid double-calling `getActiveWorldEntries`). Output as `Promise<ChatMessage[]>`.
 - **`lib/world/index.ts`**: loads world books from `worlds/`, matches entries by keyword against recent history, returns active entries split into before/after character groups injected into the system prompt.
-- **`lib/chat/context.ts`**: FIFO history trimming (default 20 messages / 8000 chars). Character-count estimation (no tokenizer).
+- **`lib/tokenizer.ts`**: token counting via `gpt-tokenizer` (cl100k_base encoding, compatible with DeepSeek). Exports `countTokens(text)` and `countMessageTokens(messages)`. Replaces the old character-count `/ 4` estimation.
+- **`lib/chat/context.ts`**: FIFO history trimming (default 20 messages / 4000 tokens). Uses `lib/tokenizer.ts` for accurate token counting instead of character-count estimation.
 
 Streaming flow: POST body includes `stream: true` → route returns a `ReadableStream` (text/plain) → frontend reads with `reader.read()` and progressively renders into assistant message bubble. Full reply saved to DB after streaming completes.
 
+Group chat streaming: When `characterIds` is sent, each character's response is preceded by `\n[GROUP_CHAR:id|name]\n` and the stream ends with `\n[GROUP_END]\n`. The frontend parses these delimiters to create separate message bubbles per character. The `X-Group-Chat: 1` response header signals group chat mode.
+
+**Prompt debug** (`/api/chat/prompt-debug`): POST `{ characterId, persona?, conversationId?, content? }` returns the fully assembled prompt messages array. No AI call — purely for debugging prompt assembly.
+
+**Chat import** (`/api/chat/import`): POST with external chat data, creates a new conversation with imported messages.
+
 ### Characters
 
-JSON files in `characters/`. Schema in `lib/character.ts`:
+Stored in `Asset` table (type="character"), auto-seeded from `characters/` JSON files on first load. Schema in `lib/character.ts`:
 
 | Field | Required | Notes |
 |---|---|---|
@@ -107,31 +126,55 @@ JSON files in `characters/`. Schema in `lib/character.ts`:
 | `creator_notes` | No | Display-only |
 | `tags` | No | `string[]` |
 
-Key functions:
-- `getCharacterFilePath(id)` — scan directory for JSON file whose content id matches (filename may differ)
-- `reloadCharacters()` — invalidate cache after file writes
-- `normalizeCharacter()` — fill missing fields with empty strings
-- `getAllCharacters()` — returns built-in fallback if directory is empty
+Key functions (all async — DB-backed with in-memory cache):
+- `getAllCharacters()` — returns all characters, falls back to built-in if empty
+- `getCharacter(id)` — find by id
+- `getDefaultCharacter()` — first character or fallback
+- `saveCharacter(id, data)` — upsert to Asset table, invalidates cache
+- `getCharacterJson(id)` — raw JSON from DB (for merge-on-update)
+- `characterExists(id)` — check if character asset exists
+- `reloadCharacters()` — invalidate in-memory cache (forces re-read from DB next call)
+
+Auto-seed: first call checks DB; if empty, reads `characters/` directory and seeds Asset table. Works on both local dev and Vercel (JSON files are in the deployment package).
 
 **Character API** (`app/api/characters/route.ts`):
-- GET — list all or by `?id=X` (any authenticated user)
-- POST — create (admin only, writes `{id}.json`)
-- PUT — update by `?id=X` (admin only, resolves filename via `getCharacterFilePath`)
+- GET — list all or by `?id=X` (any authenticated user), `?id=X&format=png` returns PNG character card
+- POST — create (admin only, writes to Asset table)
+- PUT — update by `?id=X` (admin only, merges with existing JSON from DB)
+
+**PNG Character Cards** (`lib/character-card.ts`) — SillyTavern V1-compatible:
+- `generateCharacterCard(characterData)` → PNG `Buffer` (400×600 gradient with JSON in tEXt "chara" chunk as base64)
+- `extractCharacterCard(pngBuffer)` → parsed character object or null
+- Import: POST `/api/characters/import-card` (multipart, admin-only) — extracts JSON from PNG tEXt chunk and saves
+- Frontend: export button downloads `.png`, import file input accepts `.json,.png`
 
 ### World Books
 
-JSON files in `worlds/`. Schema in `lib/world/index.ts`:
+Stored in `Asset` table (type="world"), auto-seeded from `worlds/` JSON files on first load. Schema in `lib/world/index.ts`:
 
 | Field | Notes |
 |---|---|
 | `id` | Unique identifier |
 | `name` | Display name |
 | `description` | Optional description |
-| `entries[]` | Array of `{ id, keys[], content, enabled, position, order }` |
+| `entries[]` | Array of `{ id, keys[], content, enabled, position, order, recursive?, sticky?, cooldown? }` |
+| `recursive` | If true, this entry's content is scanned for keywords that can trigger other entries |
+| `sticky` | Number of turns to keep entry active after matching (0 = not sticky) |
+| `cooldown` | Number of turns to prevent re-triggering after activation (0 = no cooldown) |
 
-`getActiveWorldEntries(history)` scans the last 10 messages for keyword matches, returns matched entries grouped by position (`beforeCharacter` / `afterCharacter`) for injection into the system prompt.
+Key functions (all async — DB-backed with in-memory cache):
+- `getAllWorldBooks()` — returns all world books
+- `getWorldBook(id)` — find by id
+- `getActiveWorldEntries(history, maxMessages?, worldState?)` — scans recent messages for keyword matches with recursion/sticky/cooldown support. Returns `{ before, after, state: WorldState }`. State tracks `{ sticky, cooldown }` counters keyed by entry ID.
+- `saveWorldBook(id, data)` — upsert to Asset table, invalidates cache
+- `deleteWorldBook(id)` — delete from Asset table, invalidates cache
+- `reloadWorldBooks()` — invalidate in-memory cache
 
-**World API** (`app/api/worlds/route.ts`): GET/POST/PUT/DELETE, admin-only for write operations.
+`WorldState` is persisted on `Conversation.worldState` (JSON string, default `"{}"`). The chat route reads it before computing active entries and writes the updated state back after. State only advances on POST (user message), not on GET (page load).
+
+Auto-seed behavior same as characters: first call checks DB, falls back to filesystem if empty.
+
+**World API** (`app/api/worlds/route.ts`): GET/POST/PUT/DELETE, admin-only for write operations. All write operations now use DB (Vercel-compatible).
 
 ### Swipe System
 
@@ -156,19 +199,47 @@ Chat routes (`app/api/chat/route.ts`) all accept `conversationId`: GET loads mes
 
 All pages are `"use client"`. `app/page.tsx` is an auth gate (fetches `/api/characters`, redirects to `/chat` or `/login`).
 
-`app/chat/page.tsx` — single-page WeChat-style chat app containing:
+`app/chat/page.tsx` — single-page WeChat-style chat app. Modals are extracted to separate components:
+- `AdminModal.tsx` — user management, DB stats (admin only)
+- `CharacterFormModal.tsx` — create/edit character form
+- `PromptDebugModal.tsx` — view assembled prompt with per-layer token counts
+- `SettingsModal.tsx` — temperature, max tokens, persona settings
+- `WorldInfoModal.tsx` — create/edit world book entries
+
+`app/chat/types.ts` — shared frontend types (Character, Message, ConversationSummary, AdminUser, WorldBook, WorldEntry, ChatSettings).
+
+Main page features:
 - Character list view (avatar + name + preview) when no character selected
 - Chat view with fixed top nav (back button + name + more menu), message area, fixed bottom input bar
 - Drawer for character/conversation switching
 - More menu: conversations, new chat, settings, theme toggle, edit character, clear chat, logout
 - Streaming display with `thinking` state (shows "Thinking..." until first chunk, then assistant bubble)
 - ReactMarkdown rendering, copy, regenerate
-- Settings modal (temperature/tokens, localStorage), character create/edit modal, admin panel
+- Swipe navigation (◂ N/M ▸) on assistant messages
 - Import/export, theme toggle (light/dark via `data-theme` attribute)
 
 `app/globals.css` — CSS variables (`:root` for light, `[data-theme="dark"]` for dark). Responsive at 768px (sidebar becomes drawer). WeChat-style bubbles with triangle arrows.
 
 Dark mode: inline `<script>` in `app/layout.tsx` reads localStorage before paint (FOUC prevention).
+
+### PWA (Progressive Web App)
+
+`public/manifest.json` — PWA manifest (`display: standalone`, WeChat-green `theme_color`, `start_url: /chat`).
+
+`public/sw.js` — Service worker with three cache strategies:
+- **Cache-first** (JS/CSS/fonts/images): serve cached, refresh cache in background
+- **Network-first** (navigation): fetch from network, cache on success, fallback to cached `/chat`
+- **Network-first with caching** (API GET): fetch from network, cache on success, fallback to `{"error":"Offline"}` JSON
+- **Network-only** (API mutations): let the browser handle — offline mutations fail gracefully
+- Cache name `ai-role-chat-v2` — bump version to invalidate old caches on activate
+
+Frontend PWA features in `app/chat/page.tsx`:
+- Install banner: listens for `beforeinstallprompt` event (Chrome/Android), shows banner with Install button
+- iOS hint: detects iOS Safari (userAgent), shows "Tap Share → Add to Home Screen" after 5s, dismissed via localStorage
+- Offline detection: listens for `online`/`offline` events, amber banner when offline
+- SW registration: inline `<script>` in `app/layout.tsx` body
+
+ESLint: `eslint.config.mjs` defines worker globals (`self`, `caches`, `fetch`, `Response`, `URL`) for `public/sw.js`.
 
 ### Environment variables
 
@@ -255,7 +326,7 @@ Every push must pass these checks. The build check is the most important because
 npm run typecheck     # Must pass
 npm run build         # MUST PASS — simulates Vercel build pipeline locally
 npm run lint          # Should pass (flat config: eslint.config.mjs)
-npm test              # Should pass (25 tests, vitest.config.ts)
+npm test              # Should pass (41 tests, vitest.config.ts)
 ```
 
 **`npm run build` is the gatekeeper.** If it fails locally, it WILL fail on Vercel. This runs both `migrate-turso.mjs` (on local DB) and `next build`.
@@ -280,17 +351,105 @@ These are the things most likely to break on Vercel but work locally:
 
 ### Debugging
 
+#### Methodology: Systematic API-First Debugging
+
+When users report bugs (especially AI behavior issues like "characters not speaking"), follow this proven workflow. **Never guess — trace the data.**
+
+**Step 1: Start dev server and bypass the frontend entirely.** Test the API directly with curl. This eliminates frontend rendering as a variable and lets you isolate server-side vs client-side issues.
+
+```bash
+npm run dev &    # Start server in background
+sleep 3          # Wait for it to be ready
+```
+
+**Step 2: Deal with proxy interference.** WSL/Windows environments often set `http_proxy`/`ALL_PROXY` env vars that route localhost traffic through a proxy. Curl commands against localhost will fail with 502 or empty responses. Fix with `--noproxy '*'`:
+
+```bash
+# Login — use cookie jar, NOT manual token extraction
+curl -s --noproxy '*' -c /tmp/cookies.txt http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"123","password":"123"}'
+
+# All subsequent requests use the cookie jar
+curl -s --noproxy '*' -b /tmp/cookies.txt http://localhost:3000/api/characters | jq '.[].id'
+```
+
+**Step 3: Add temporary `console.error` logging to see raw vs processed data.** This is the single most effective debugging technique. Log what the AI returns BEFORE any post-processing, and log it AFTER:
+
+```typescript
+console.error(`[DEBUG ${ch.name}] raw (${fullReply.length}): ${fullReply.slice(0, 200)}`);
+const stripped = stripCrossCharacterText(fullReply, ch.name);
+console.error(`[DEBUG ${ch.name}] stripped (${stripped.length}): ${stripped.slice(0, 200)}`);
+```
+
+Then restart the server with stderr redirected to a file so you can inspect the logs:
+
+```bash
+nohup npm run dev > /tmp/stdout.log 2> /tmp/stderr.log &
+# ... run tests ...
+cat /tmp/stderr.log | grep "DEBUG"
+```
+
+**Step 4: Test multi-round conversations.** AI behavior bugs often only appear after several rounds when problematic patterns accumulate in the history. Run at least 5-8 rounds:
+
+```bash
+for i in 1 2 3 4 5 6 7 8; do
+  RESP=$(curl -s --noproxy '*' -b /tmp/cookies.txt http://localhost:3000/api/chat \
+    -H "Content-Type: application/json" \
+    -d '{"characterIds":["alice","ben","testchar"],"message":"Round '$i'","stream":false}')
+  echo "$RESP" | jq '[.replies[] | {name: .characterName, len: (.content | length)}]'
+done
+```
+
+Track which character goes silent and at what round — this pinpoints when the degradation starts.
+
+**Step 5: Trace the data end-to-end.** Once you spot the symptom (e.g., "赵煜 goes silent at round 3"), trace the full path:
+
+1. **What does the AI actually return?** → Raw `fullReply` from `aiChatStream`
+2. **What does post-processing produce?** → After `stripCrossCharacterText`
+3. **What's saved to DB?** → Query with curl: `GET /api/chat?characterId=alice&conversationId=...`
+4. **What does the frontend receive?** → Check the streaming response text
+
+**Step 6: When dealing with AI format continuation bugs**, remember this principle:
+> The AI model is a text completion engine — it will naturally continue ANY format pattern it sees repeated in the prompt. If you put `[Name]: text` in the message content, the model will generate more `[Name]: text`. The fix is to move speaker identity OUT of the content and into message metadata (the OpenAI `name` field), which the model sees but doesn't treat as completable text.
+
+**Step 7: Verify with the full build pipeline** before declaring a fix complete:
+
+```bash
+npm run typecheck && npm run build && npx vitest run --pool=forks
+```
+
+#### Quick API Testing (curl recipes)
+
 **Local API debugging:**
 
 ```bash
 # Test auth
-curl -s http://localhost:3000/api/auth/login -H "Content-Type: application/json" -d '{"username":"123","password":"123"}' | jq .
+curl -s --noproxy '*' http://localhost:3000/api/auth/login -H "Content-Type: application/json" -d '{"username":"123","password":"123"}' | jq .
 
 # Test characters
-curl -s http://localhost:3000/api/characters | jq .
+curl -s --noproxy '*' http://localhost:3000/api/characters | jq .
 
-# Chat with cookie from login response
-curl -s http://localhost:3000/api/chat -H "Content-Type: application/json" -b "token=<jwt>" -d '{"characterId":"alice","content":"hello"}'
+# Chat with cookie jar
+curl -s --noproxy '*' -c /tmp/cookies.txt http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" -d '{"username":"123","password":"123"}' > /dev/null
+curl -s --noproxy '*' -b /tmp/cookies.txt http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"characterId":"alice","message":"hello"}' | jq .
+
+# Group chat (non-streaming)
+curl -s --noproxy '*' -b /tmp/cookies.txt http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"characterIds":["alice","ben"],"message":"hi","stream":false}' | jq .
+
+# Group chat (streaming) — see raw delimiters and content
+curl -s --noproxy '*' -b /tmp/cookies.txt http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"characterIds":["alice","ben"],"message":"hi","stream":true}'
+
+# Verify saved messages in DB
+curl -s --noproxy '*' -b /tmp/cookies.txt \
+  "http://localhost:3000/api/chat?characterId=alice&conversationId=<ID>" | jq '[.messages[] | {role, characterId, content: .content[0:100]}]'
 ```
 
 **AI pipeline debugging:**
@@ -298,6 +457,7 @@ curl -s http://localhost:3000/api/chat -H "Content-Type: application/json" -b "t
 - The full assembled messages array sent to DeepSeek is logged before the fetch call in `lib/deepseek.ts`
 - Rate limiting events are logged in `lib/ai.ts` — check for "Rate limit exceeded" in console
 - Stream response errors appear in the server console, not in the browser
+- For prompt debugging without AI calls: use `POST /api/chat/prompt-debug` to see the assembled prompt
 
 **Database inspection locally:**
 
@@ -345,8 +505,4 @@ When upgrading: change all three together, run `npm install`, commit BOTH `packa
 
 ## Pending Work (see todo.md)
 
-**Vercel reliability (ongoing):** Character CRUD uses `fs.writeFileSync` (fails on Vercel), demo account is in-memory, rate limiting is per-instance.
-
-**P1:** Swipe UI navigation, World Info frontend management UI.
-
-**P2:** PNG character cards, real tokenizer, prompt debug panel, advanced World Info (recursion/sticky/cooldown), multi-character group chat, plugin system.
+**P2:** Plugin system — extension points for custom prompt transformers, UI components, API middleware.

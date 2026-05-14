@@ -1,6 +1,9 @@
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
+  /** Speaker name for group chat — set as the OpenAI `name` field so the model
+   *  distinguishes speakers via metadata, not content annotation. */
+  name?: string;
 }
 
 export interface ModelOptions {

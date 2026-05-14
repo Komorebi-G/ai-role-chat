@@ -17,11 +17,14 @@ model User {
 }
 
 model Conversation {
-  id          String    @id @default(uuid())
-  userId      String
-  characterId String
-  title       String    @default("New Chat")
-  createdAt   DateTime  @default(now())
+  id           String   @id @default(uuid())
+  userId       String
+  characterId  String
+  title        String   @default("New Chat")
+  worldState   String   @default("{}") // JSON: WorldState { sticky, cooldown }
+  type         String   @default("single") // "single" | "group"
+  characterIds String   @default("[]") // JSON array of character IDs (group chats)
+  createdAt    DateTime @default(now())
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages Message[]
@@ -40,4 +43,19 @@ model Message {
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model Asset {
+  id        String   @id
+  type      String   // "character" or "world"
+  data      String   // JSON blob
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RateLimit {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  requestCount Int      @default(1)
+  windowStart  DateTime @default(now())
 }

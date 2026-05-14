@@ -71,16 +71,33 @@ const en = {
   // Chat — swipe
   "chat.swipeOf": "of",
 
+  // Chat — time labels
+  "chat.timeNow": "Just now",
+  "chat.timeMinutesAgo": "{n}m ago",
+  "chat.timeToday": "Today",
+  "chat.timeYesterday": "Yesterday",
+
   // Chat — empty states
   "chat.emptyTitle": "AI Role Chat",
   "chat.emptyHint": "Select a character to start chatting",
   "chat.emptyConversation": "No conversations yet. Start a new chat!",
+  "chat.emptyMessages": "No messages yet. Say hello!",
+  "chat.loadingConversations": "Loading conversations...",
+  "chat.loadingMessages": "Loading messages...",
 
   // Chat — conversations
   "conversation.title": "Conversations",
   "conversation.newChat": "New Chat (Default)",
   "conversation.rename": "Rename",
   "conversation.renamePlaceholder": "Enter title...",
+
+  // Group chat
+  "group.title": "Group Chat",
+  "group.selectCharacters": "Select characters for group chat",
+  "group.start": "Start Group Chat",
+  "group.addCharacter": "Add to Group",
+  "group.removeCharacter": "Remove",
+  "group.selectedCount": "{n} character(s) selected",
 
   // Chat — settings
   "settings.title": "Settings",
@@ -100,6 +117,8 @@ const en = {
   "char.createTitle": "Create Character",
   "char.editTitle": "Edit Character",
   "char.id": "ID",
+  "char.avatar": "Avatar",
+  "char.removeAvatar": "Remove",
   "char.name": "Name",
   "char.description": "Description",
   "char.personality": "Personality",
@@ -123,7 +142,9 @@ const en = {
   "char.importChar": "Import Character",
   "char.exportChar": "Export Character",
   "char.importBtn": "Import",
-  "char.importFileHint": "Select a JSON file",
+  "char.importFileHint": "Select a JSON or PNG file",
+  "char.importCardFailed": "Failed to import character card",
+  "char.cardImported": "Character card imported",
 
   // Chat — character info modal
   "charInfo.title": "Character Info",
@@ -155,6 +176,33 @@ const en = {
 
   // World Info
   "world.activeEntries": "Active World Entries",
+  "world.manage": "World Info",
+  "world.title": "World Books",
+  "world.create": "Create World Book",
+  "world.edit": "Edit World Book",
+  "world.name": "Name",
+  "world.description": "Description",
+  "world.entries": "Entries",
+  "world.entryKey": "Keywords (comma-separated)",
+  "world.entryContent": "Content",
+  "world.entryPosition": "Position",
+  "world.entryPositionBefore": "Before Character",
+  "world.entryPositionAfter": "After Character",
+  "world.entryOrder": "Order",
+  "world.entryEnabled": "Enabled",
+  "world.addEntry": "Add Entry",
+  "world.editEntry": "Edit Entry",
+  "world.noEntries": "No entries yet",
+  "world.noBooks": "No world books yet",
+  "world.deleteConfirm": "Delete this world book?",
+  "world.saveFailed": "Save failed",
+  "world.deleteFailed": "Delete failed",
+  "world.loadFailed": "Load failed",
+
+  // Prompt debug
+  "promptDebug.title": "Prompt Debug",
+  "promptDebug.copyFull": "Copy Full Prompt",
+  "promptDebug.show": "Prompt Debug",
 
   // Token budget
   "token.budget": "Context",

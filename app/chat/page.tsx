@@ -3,52 +3,17 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { useTranslation, type Locale } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
+import type { Character, Message, ConversationSummary, AdminUser, ChatSettings } from "./types";
+import SettingsModal from "./SettingsModal";
+import CharacterFormModal from "./CharacterFormModal";
+import AdminModal from "./AdminModal";
+import WorldInfoModal from "./WorldInfoModal";
+import PromptDebugModal from "./PromptDebugModal";
 
-interface Character {
-  id: string;
-  name: string;
-  description?: string;
-  personality?: string;
-  scenario?: string;
-  firstMessage?: string;
-  mes_example?: string;
-  system_prompt?: string;
-  post_history_instructions?: string;
-  alternate_greetings?: string[];
-  creator?: string;
-  character_version?: string;
-  creator_notes?: string;
-  tags?: string[];
-}
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  swipes: string;
-  swipeId: number;
-  createdAt: string;
-}
-
-interface ConversationSummary {
-  id: string;
-  title: string;
-  createdAt: string;
-  _count?: { messages: number };
-}
-
-interface AdminUser {
-  id: string;
-  username: string;
-  role: string;
-  createdAt: string;
-}
-
-interface ChatSettings {
-  temperature: number;
-  maxTokens: number;
-  persona: string;
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
 function loadSettings(): ChatSettings {
@@ -82,17 +47,75 @@ function avatarLetter(name: string): string {
   return name.charAt(0).toUpperCase();
 }
 
+/** Format a date as a relative time string for conversation list. */
+function formatRelativeTime(dateStr: string, locale: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const isZh = locale.startsWith("zh");
+
+  if (diffMin < 1) return isZh ? "刚刚" : "Just now";
+  if (diffMin < 60) return isZh ? `${diffMin}分钟前` : `${diffMin}m ago`;
+
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const dateDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  if (dateDay.getTime() === today.getTime()) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+  if (dateDay.getTime() === yesterday.getTime()) {
+    const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+    return (isZh ? "昨天 " : "Yesterday ") + time;
+  }
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString([], { month: "2-digit", day: "2-digit" });
+  }
+  return date.toLocaleDateString([], { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+/** Format a message's time for time dividers in the chat stream. */
+function formatMessageTime(dateStr: string, locale: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const isZh = locale.startsWith("zh");
+
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const msgDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+
+  if (msgDay.getTime() === today.getTime()) {
+    return (isZh ? "今天 " : "Today ") + time;
+  }
+  if (msgDay.getTime() === yesterday.getTime()) {
+    return (isZh ? "昨天 " : "Yesterday ") + time;
+  }
+  return date.toLocaleDateString([], { month: "2-digit", day: "2-digit" }) + " " + time;
+}
+
+/** Return true if a time divider should be inserted between two messages. */
+function shouldShowTimeDivider(prevDateStr: string, currentDateStr: string): boolean {
+  const prev = new Date(prevDateStr).getTime();
+  const curr = new Date(currentDateStr).getTime();
+  return (curr - prev) > 5 * 60 * 1000; // 5 minute gap
+}
+
 export default function ChatPage() {
   const router = useRouter();
   const { t, locale, setLocale } = useTranslation();
+  // Wider-type wrapper to pass t to modal components that accept (key: string) => string
+  const tf: (key: string) => string = (key) => t(key as never);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [selectedChar, setSelectedChar] = useState<Character | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string>("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false); // input disabled + general loading
-  const [thinking, setThinking] = useState(false); // "thinking" bubble visible
+  const [loading, setLoading] = useState(false);
+  const [thinking, setThinking] = useState(false);
   const [error, setError] = useState("");
   const [activeWorldEntryIds, setActiveWorldEntryIds] = useState<string[]>([]);
   const [unauthorized, setUnauthorized] = useState(false);
@@ -110,7 +133,7 @@ export default function ChatPage() {
     id: "", name: "", description: "", personality: "", scenario: "",
     first_mes: "", mes_example: "", system_prompt: "",
     post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "",
-    creator_notes: "", tags: "",
+    creator_notes: "", tags: "", avatar: "",
   });
   const [charCreating, setCharCreating] = useState(false);
   const [charError, setCharError] = useState("");
@@ -126,6 +149,25 @@ export default function ChatPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
+  const [showWorldInfo, setShowWorldInfo] = useState(false);
+  const [showPromptDebug, setShowPromptDebug] = useState(false);
+
+  // Conversation participants (loaded from active conversation's characterIds)
+  const [participants, setParticipants] = useState<Character[]>([]);
+  // Multi-select mode for creating new conversation
+  const [newChatSelection, setNewChatSelection] = useState<Character[]>([]);
+  const [showNewChatSelector, setShowNewChatSelector] = useState(false);
+  // Global conversation list (home screen, WeChat-style)
+  const [allConversations, setAllConversations] = useState<ConversationSummary[]>([]);
+
+  // PWA install prompt
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => {
+    if (typeof navigator !== "undefined") return navigator.onLine;
+    return true;
+  });
+  const [showIOSHint, setShowIOSHint] = useState(false);
 
   // Apply theme on mount
   useEffect(() => {
@@ -136,6 +178,55 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => { applyTheme(theme); }, [theme]);
+
+  // Listen for PWA install prompt
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e as BeforeInstallPromptEvent);
+      setShowInstallBanner(true);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  // Online/offline detection — initial value set in useState initializer
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+
+  // iOS install hint (iOS doesn't support beforeinstallprompt)
+  useEffect(() => {
+    const ua = navigator.userAgent || "";
+    const isIOSDevice = /iphone|ipad|ipod/i.test(ua);
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches;
+    if (isIOSDevice && !isStandalone && !localStorage.getItem("ios-hint-dismissed")) {
+      const timer = setTimeout(() => setShowIOSHint(true), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  async function handleInstall() {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const result = await installPrompt.userChoice;
+    if (result.outcome === "accepted") {
+      setShowInstallBanner(false);
+      setInstallPrompt(null);
+    }
+  }
+
+  function dismissIOSHint() {
+    setShowIOSHint(false);
+    try { localStorage.setItem("ios-hint-dismissed", "1"); } catch { /* ignore */ }
+  }
 
   function toggleTheme() {
     setTheme((t) => (t === "light" ? "dark" : "light"));
@@ -163,23 +254,118 @@ export default function ChatPage() {
     if (unauthorized) router.replace("/login");
   }, [unauthorized, router]);
 
-  // Load conversations when character is selected
-  useEffect(() => {
-    if (!selectedChar) return;
-    fetch(`/api/conversations?characterId=${selectedChar.id}`)
-      .then((res) => {
-        if (res.status === 401) { setUnauthorized(true); return []; }
-        return res.json();
-      })
+  // Load all conversations for home screen and drawer
+  const loadAllConversations = () => {
+    fetch("/api/conversations")
+      .then((res) => res.ok ? res.json() : [])
+      .catch(() => [])
       .then((data) => {
         if (Array.isArray(data)) {
-          setConversations(data);
-          if (data.length > 0) setActiveConversationId(data[0].id);
-          else setActiveConversationId("");
+          data.sort((a: ConversationSummary, b: ConversationSummary) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+          setAllConversations(data);
+          // Also set per-character conversations for drawer when in chat
+          if (selectedChar) {
+            setConversations(data.filter((c: ConversationSummary) => {
+              try {
+                const ids: string[] = JSON.parse(c.characterIds || "[]");
+                return ids.length > 0 ? ids.includes(selectedChar.id) : c.characterId === selectedChar.id;
+              } catch { return c.characterId === selectedChar.id; }
+            }));
+          }
         }
-      })
-      .catch(() => {});
-  }, [selectedChar]);
+      });
+  };
+
+  useEffect(() => {
+    loadAllConversations();
+  }, []);
+
+  // Refresh per-character conversation list when character changes
+  useEffect(() => {
+    if (!selectedChar) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setConversations([]);
+      return;
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setConversations(allConversations.filter((c) => {
+      try {
+        const ids: string[] = JSON.parse(c.characterIds || "[]");
+        return ids.length > 0 ? ids.includes(selectedChar.id) : c.characterId === selectedChar.id;
+      } catch { return c.characterId === selectedChar.id; }
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChar, allConversations]);
+
+  // Auto-find or create conversation when character is selected with no active conversation
+  useEffect(() => {
+    if (!selectedChar || activeConversationId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/conversations?characterId=${selectedChar.id}`);
+        if (!res.ok || cancelled) return;
+        const convs = await res.json();
+        if (Array.isArray(convs)) {
+          const singleConv = convs.find((c: ConversationSummary) => c.type !== "group");
+          if (singleConv) {
+            if (!cancelled) setActiveConversationId(singleConv.id);
+            return;
+          }
+        }
+        // No existing single conversation, create one
+        const createRes = await fetch("/api/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ characterIds: [selectedChar.id] }),
+        });
+        if (cancelled) return;
+        const data = await createRes.json();
+        if (createRes.ok) {
+          setActiveConversationId(data.id);
+          setConversations((prev) => [data, ...prev]);
+          setAllConversations((prev) => [data, ...prev]);
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedChar, activeConversationId]);
+
+  // Load participants when active conversation changes
+  useEffect(() => {
+    if (!activeConversationId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setParticipants([]);
+      return;
+    }
+    const conv = conversations.find((c) => c.id === activeConversationId);
+    if (!conv) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const ids: string[] = JSON.parse(conv.characterIds || "[]");
+        const charIds = ids.length > 0 ? ids : (conv.characterId ? [conv.characterId] : []);
+        if (charIds.length === 0) return;
+        const chars = await Promise.all(
+          charIds.map(async (id) => {
+            const res = await fetch(`/api/characters?id=${id}`);
+            if (!res.ok) return null;
+            return res.json();
+          })
+        );
+        if (!cancelled) {
+          const valid = chars.filter(Boolean) as Character[];
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setParticipants(valid);
+          if (valid.length > 0 && !selectedChar) setSelectedChar(valid[0]);
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversationId, conversations]);
 
   // Load messages when conversation changes
   useEffect(() => {
@@ -197,61 +383,110 @@ export default function ChatPage() {
       })
       .then((data) => {
         if (cancelled) return;
-        const msgs = data.messages || [];
+        const msgs: Message[] = data.messages || [];
         setActiveWorldEntryIds(data.worldEntryIds || []);
-        if (msgs.length === 0 && selectedChar.firstMessage) {
+        if (msgs.length === 0 && participants.length <= 1 && selectedChar.firstMessage) {
           const greetings = [selectedChar.firstMessage, ...(selectedChar.alternate_greetings || [])];
-          setMessages([{ id: "first_mes", role: "assistant", content: selectedChar.firstMessage, swipes: JSON.stringify(greetings), swipeId: 0, createdAt: new Date().toISOString() }]);
+          setMessages([{ id: "first_mes", role: "assistant", content: selectedChar.firstMessage, characterId: selectedChar.id, characterName: selectedChar.name, swipes: JSON.stringify(greetings), swipeId: 0, createdAt: new Date().toISOString() }]);
         } else {
           setMessages(msgs);
         }
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [selectedChar, activeConversationId]);
+  }, [selectedChar, activeConversationId, participants.length]);
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const isGroupChat = participants.length >= 2;
+
   async function handleNewChat() {
     if (!selectedChar) return;
     try {
+      const charIds = isGroupChat
+        ? participants.map((c) => c.id)
+        : [selectedChar.id];
+      const title = isGroupChat
+        ? `Group: ${participants.map((c) => c.name).join(", ")}`
+        : t("conversation.newChat");
       const res = await fetch("/api/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ characterId: selectedChar.id, title: t("conversation.newChat") }),
+        body: JSON.stringify({ characterIds: charIds, title }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || t("chat.createChatFailed")); return; }
       setConversations((prev) => [data, ...prev]);
+      setAllConversations((prev) => [data, ...prev]);
       setActiveConversationId(data.id);
       setMessages([]);
       setError("");
-      setDrawerOpen(false);
+      setShowMoreMenu(false);
     } catch { setError(t("common.networkError")); }
   }
 
-  async function handleSelectConversation(convId: string) {
-    setActiveConversationId(convId);
+  async function handleSelectConversation(conv: ConversationSummary) {
+    setActiveConversationId(conv.id);
     setError("");
     setDrawerOpen(false);
   }
 
   function handleSelectCharacter(c: Character) {
-    if (selectedChar?.id === c.id) { setDrawerOpen(false); return; }
+    if (selectedChar?.id === c.id && participants.length <= 1 && activeConversationId) {
+      setDrawerOpen(false);
+      return;
+    }
     setSelectedChar(c);
+    setParticipants([c]);
     setMessages([]);
     setActiveConversationId("");
-    setConversations([]);
     setDrawerOpen(false);
   }
 
   function handleBack() {
-    setSelectedChar(null);
-    setMessages([]);
     setActiveConversationId("");
-    setConversations([]);
+    setParticipants([]);
+    setMessages([]);
+    setSelectedChar(null);
+    setNewChatSelection([]);
+    setShowNewChatSelector(false);
+    loadAllConversations();
+  }
+
+  function toggleNewChatSelect(c: Character) {
+    setNewChatSelection((prev) => {
+      const exists = prev.find((gc) => gc.id === c.id);
+      if (exists) return prev.filter((gc) => gc.id !== c.id);
+      return [...prev, c];
+    });
+  }
+
+  async function handleStartGroupChat() {
+    if (newChatSelection.length < 2) return;
+    try {
+      const charIds = newChatSelection.map((c) => c.id);
+      const res = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          characterIds: charIds,
+          title: `Group: ${newChatSelection.map((c) => c.name).join(", ")}`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || t("chat.createChatFailed")); return; }
+      setSelectedChar(newChatSelection[0]);
+      setParticipants(newChatSelection);
+      setConversations((prev) => [data, ...prev]);
+      setAllConversations((prev) => [data, ...prev]);
+      setActiveConversationId(data.id);
+      setMessages([]);
+      setNewChatSelection([]);
+      setError("");
+      setDrawerOpen(false);
+    } catch { setError(t("common.networkError")); }
   }
 
   function startRename(conv: ConversationSummary) {
@@ -287,7 +522,6 @@ export default function ChatPage() {
     setError("");
 
     const userMsgId = Date.now().toString();
-    const assistantMsgId = (Date.now() + 1).toString();
     setMessages((prev) => [
       ...prev,
       { id: userMsgId, role: "user", content: message, swipes: "[]", swipeId: 0, createdAt: new Date().toISOString() },
@@ -295,19 +529,31 @@ export default function ChatPage() {
 
     setLoading(true);
     setThinking(true);
+
+    const body: Record<string, unknown> = {
+      conversationId: activeConversationId,
+      message,
+      stream: true,
+      temperature: settings.temperature,
+      maxTokens: settings.maxTokens,
+      persona: settings.persona || undefined,
+    };
+
+    if (isGroupChat) {
+      body.characterIds = participants.map((c) => c.id);
+    } else {
+      body.characterId = selectedChar?.id;
+    }
+
+    // Track assistant message IDs for cleanup on stream error
+    const charMsgIds = new Map<string, string>();
+    let singleAssistantId = "";
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          characterId: selectedChar.id,
-          conversationId: activeConversationId,
-          message,
-          stream: true,
-          temperature: settings.temperature,
-          maxTokens: settings.maxTokens,
-          persona: settings.persona || undefined,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (res.status === 401) { setUnauthorized(true); return; }
@@ -316,39 +562,164 @@ export default function ChatPage() {
         setError(data.error || t("chat.sendFailed"));
         setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
         setLoading(false);
+        setThinking(false);
         return;
       }
 
-      // Capture active world entries from response header
       const worldHeader = res.headers.get("X-Active-World-Entries");
       setActiveWorldEntryIds(worldHeader ? worldHeader.split(",").filter(Boolean) : []);
 
+      const isGroupResponse = res.headers.get("X-Group-Chat") === "1";
       const reader = res.body?.getReader();
       if (!reader) {
         setError(t("chat.streamNotSupported"));
         setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
         setLoading(false);
+        setThinking(false);
         return;
       }
 
       const decoder = new TextDecoder();
       let buffer = "";
       let assistantAdded = false;
+      let currentCharId = "";
+      let currentCharName = "";
+      const charTexts = new Map<string, string>(); // charId → accumulated full text
+      let groupMsgsSeen = 0;
+
+      /** Push accumulated text for a character into React state. */
+      function flushCharText(charId: string) {
+        const msgId = charMsgIds.get(charId);
+        if (!msgId) return;
+        const full = charTexts.get(charId) || "";
+        setMessages((prevMsgs) => prevMsgs.map((m) => m.id === msgId ? { ...m, content: full } : m));
+      }
+
+      /** Final reconciliation: flush any remaining buffer and remove still-empty assistant bubbles. */
+      function finalizeGroupStream() {
+        // Flush leftover buffer for the last active character
+        if (buffer && currentCharId) {
+          const prev = charTexts.get(currentCharId) || "";
+          charTexts.set(currentCharId, prev + buffer);
+          flushCharText(currentCharId);
+          buffer = "";
+        }
+        // Remove any assistant messages whose content is still empty or whitespace-only
+        // after streaming. This handles two cases:
+        // 1. AI returned empty response → message was never updated from ""
+        // 2. Delimiter newlines (like \n before [GROUP_END]) were the only "content"
+        setMessages((prevMsgs) => {
+          const emptyIds = new Set<string>();
+          // Check charTexts for empty/whitespace entries
+          for (const [charId, text] of charTexts) {
+            if (!text.trim()) {
+              emptyIds.add(charMsgIds.get(charId) || "");
+            }
+          }
+          // Also scan the message state directly for any assistant message whose
+          // content is still empty — this catches messages that were created via
+          // GROUP_CHAR but whose charTexts entry was somehow missed.
+          for (const m of prevMsgs) {
+            if (m.role === "assistant" && !m.content.trim()) {
+              emptyIds.add(m.id);
+            }
+          }
+          return emptyIds.size > 0 ? prevMsgs.filter((m) => !emptyIds.has(m.id)) : prevMsgs;
+        });
+      }
+
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          // Stream ended — flush any remaining buffer before exiting
+          if (isGroupResponse) finalizeGroupStream();
+          break;
+        }
         buffer += decoder.decode(value, { stream: true });
-        if (!assistantAdded) {
-          assistantAdded = true;
-          setThinking(false);
-          setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: buffer, swipes: "[]", swipeId: 0, createdAt: new Date().toISOString() }]);
+
+        if (isGroupResponse) {
+          // Parse group chat delimiters: [GROUP_CHAR:id|name] and [GROUP_END]
+          while (true) {
+            const charIdx = buffer.indexOf("[GROUP_CHAR:");
+            const endIdx = buffer.indexOf("[GROUP_END]");
+
+            if (charIdx === -1 && endIdx === -1) break;
+
+            const useChar = charIdx !== -1 && (endIdx === -1 || charIdx < endIdx);
+
+            if (useChar) {
+              // Check for complete delimiter first — if incomplete across chunks, wait for next chunk
+              const closeBracket = buffer.indexOf("]\n", charIdx);
+              if (closeBracket === -1) break;
+
+              // Text before delimiter belongs to previous character
+              const before = buffer.slice(0, charIdx);
+              if (before && currentCharId) {
+                const prev = charTexts.get(currentCharId) || "";
+                charTexts.set(currentCharId, prev + before);
+                flushCharText(currentCharId);
+              }
+
+              const delim = buffer.slice(charIdx, closeBracket + 2);
+              buffer = buffer.slice(closeBracket + 2);
+
+              const match = delim.match(/\[GROUP_CHAR:([^|]+)\|([^\]]+)\]\n/);
+              if (match) {
+                currentCharId = match[1];
+                currentCharName = match[2];
+                charTexts.set(currentCharId, "");
+                groupMsgsSeen++;
+                const newId = (Date.now() + groupMsgsSeen).toString();
+                charMsgIds.set(currentCharId, newId);
+                setThinking(false);
+                setMessages((prevMsgs) => [...prevMsgs, {
+                  id: newId, role: "assistant", content: "",
+                  characterId: currentCharId, characterName: currentCharName,
+                  swipes: "[]", swipeId: 0, createdAt: new Date().toISOString(),
+                }]);
+              }
+            } else {
+              // GROUP_END: text before it belongs to current character
+              const before = buffer.slice(0, endIdx);
+              if (before && currentCharId) {
+                const prev = charTexts.get(currentCharId) || "";
+                charTexts.set(currentCharId, prev + before);
+                flushCharText(currentCharId);
+              }
+              // Strip [GROUP_END] marker (12 chars) and surrounding newlines
+              buffer = buffer.slice(endIdx + 12);
+              if (buffer.startsWith("\n")) buffer = buffer.slice(1);
+              buffer = "";
+              currentCharId = "";
+              currentCharName = "";
+              break;
+            }
+          }
+
+          // Remaining buffer content belongs to current character
+          if (buffer && currentCharId) {
+            const prev = charTexts.get(currentCharId) || "";
+            charTexts.set(currentCharId, prev + buffer);
+            flushCharText(currentCharId);
+            buffer = "";
+          }
         } else {
-          setMessages((prev) => prev.map((m) => m.id === assistantMsgId ? { ...m, content: buffer } : m));
+          // Single chat streaming
+          if (!assistantAdded) {
+            assistantAdded = true;
+            singleAssistantId = (Date.now() + 1).toString();
+            setThinking(false);
+            setMessages((prevMsgs) => [...prevMsgs, { id: singleAssistantId, role: "assistant", content: buffer, swipes: "[]", swipeId: 0, createdAt: new Date().toISOString() }]);
+          } else {
+            setMessages((prevMsgs) => prevMsgs.map((m) => m.id === singleAssistantId ? { ...m, content: buffer } : m));
+          }
         }
       }
     } catch {
       setError(t("common.networkError"));
-      setMessages((prev) => prev.filter((m) => m.id !== userMsgId));
+      const orphanIds = new Set(charMsgIds.values());
+      if (singleAssistantId) orphanIds.add(singleAssistantId);
+      setMessages((prev) => prev.filter((m) => m.id !== userMsgId && !orphanIds.has(m.id)));
     } finally {
       setLoading(false);
       setThinking(false);
@@ -380,16 +751,26 @@ export default function ChatPage() {
     } catch { setAdminError(t("common.networkError")); }
   }
 
-  async function handleClearChat() {
-    if (!selectedChar || !activeConversationId) return;
+  async function handleDeleteConversation() {
+    if (!activeConversationId) return;
     setClearLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/chat?characterId=${selectedChar.id}&conversationId=${activeConversationId}`, { method: "DELETE" });
+      const res = await fetch("/api/conversations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: activeConversationId }),
+      });
       if (!res.ok) { const d = await res.json(); setError(d.error || t("chat.clearFailed")); return; }
       setMessages([]);
+      setActiveConversationId("");
+      setParticipants([]);
+      setSelectedChar(null);
+      setConversations((prev) => prev.filter((c) => c.id !== activeConversationId));
+      setAllConversations((prev) => prev.filter((c) => c.id !== activeConversationId));
       setShowMoreMenu(false);
-    } catch { setError("Network error"); }
+      loadAllConversations();
+    } catch { setError(t("common.networkError")); }
     finally { setClearLoading(false); }
   }
 
@@ -420,7 +801,7 @@ export default function ChatPage() {
       if (refresh.ok) { const list = await refresh.json(); if (Array.isArray(list)) setCharacters(list); }
       setShowCreateChar(false);
       setEditingCharId(null);
-      setCharForm({ id: "", name: "", description: "", personality: "", scenario: "", first_mes: "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "", creator_notes: "", tags: "" });
+      setCharForm({ id: "", name: "", description: "", personality: "", scenario: "", first_mes: "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "", creator_notes: "", tags: "", avatar: "" });
     } catch { setCharError(t("common.networkError")); }
     finally { setCharCreating(false); }
   }
@@ -431,9 +812,9 @@ export default function ChatPage() {
       const res = await fetch(`/api/characters?id=${char.id}`);
       if (res.ok) {
         const full = await res.json();
-        setCharForm({ id: full.id || char.id, name: full.name || char.name, description: full.description || char.description || "", personality: full.personality || "", scenario: full.scenario || "", first_mes: full.first_mes || full.firstMessage || "", mes_example: full.mes_example || "", system_prompt: full.system_prompt || "", post_history_instructions: full.post_history_instructions || "", alternate_greetings: Array.isArray(full.alternate_greetings) ? full.alternate_greetings.join("\n") : "", creator: full.creator || "", character_version: full.character_version || "", creator_notes: full.creator_notes || "", tags: Array.isArray(full.tags) ? full.tags.join(", ") : "" });
+        setCharForm({ id: full.id || char.id, name: full.name || char.name, description: full.description || char.description || "", personality: full.personality || "", scenario: full.scenario || "", first_mes: full.first_mes || full.firstMessage || "", mes_example: full.mes_example || "", system_prompt: full.system_prompt || "", post_history_instructions: full.post_history_instructions || "", alternate_greetings: Array.isArray(full.alternate_greetings) ? full.alternate_greetings.join("\n") : "", creator: full.creator || "", character_version: full.character_version || "", creator_notes: full.creator_notes || "", tags: Array.isArray(full.tags) ? full.tags.join(", ") : "", avatar: full.avatar || "" });
       } else {
-        setCharForm({ id: char.id, name: char.name, description: char.description || "", personality: "", scenario: "", first_mes: char.firstMessage || "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "", creator_notes: "", tags: "" });
+        setCharForm({ id: char.id, name: char.name, description: char.description || "", personality: "", scenario: "", first_mes: char.firstMessage || "", mes_example: "", system_prompt: "", post_history_instructions: "", alternate_greetings: "", creator: "", character_version: "", creator_notes: "", tags: "", avatar: char.avatar || "" });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : t("common.networkError");
@@ -446,13 +827,12 @@ export default function ChatPage() {
 
   async function handleExportChar(char: Character) {
     try {
-      const res = await fetch(`/api/characters?id=${char.id}`);
+      const res = await fetch(`/api/characters?id=${char.id}&format=png`);
       if (!res.ok) { setError(t("char.exportFailed")); return; }
-      const data = await res.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = `${char.id}.json`; a.click();
+      a.href = url; a.download = `${char.id}.png`; a.click();
       URL.revokeObjectURL(url);
     } catch { setError(t("char.exportFailed")); }
   }
@@ -480,7 +860,6 @@ export default function ChatPage() {
     if (!file || !selectedChar) return;
     setShowMoreMenu(false);
     try {
-      // Clear the input so the same file can be re-imported
       if (importFileInputRef.current) importFileInputRef.current.value = "";
 
       const text = await file.text();
@@ -498,12 +877,10 @@ export default function ChatPage() {
       if (!res.ok) { const d = await res.json(); setError(d.error || t("chat.importFailed")); return; }
       const data = await res.json();
       setError("");
-      // Reload conversations and messages
       fetch(`/api/conversations?characterId=${selectedChar.id}`)
         .then((r) => r.json())
         .then((d) => { if (Array.isArray(d)) setConversations(d); })
         .catch(() => {});
-      // Trigger message reload by toggling conversation ID
       if (activeConversationId) {
         const cid = activeConversationId;
         setActiveConversationId("");
@@ -517,15 +894,27 @@ export default function ChatPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const text = await file.text();
-      const json = JSON.parse(text);
-      if (!json.id || !json.name) { setError(t("char.idRequired")); return; }
-      const res = await fetch("/api/characters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || t("chat.importFailed")); return; }
-      const refresh = await fetch("/api/characters");
-      if (refresh.ok) { const list = await refresh.json(); if (Array.isArray(list)) setCharacters(list); }
-      setError("");
+      if (file.name.endsWith(".png") || file.type === "image/png") {
+        // PNG character card import
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/characters/import-card", { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error || t("chat.importFailed")); return; }
+        const refresh = await fetch("/api/characters");
+        if (refresh.ok) { const list = await refresh.json(); if (Array.isArray(list)) setCharacters(list); }
+        setError("");
+      } else {
+        const text = await file.text();
+        const json = JSON.parse(text);
+        if (!json.id || !json.name) { setError(t("char.idRequired")); return; }
+        const res = await fetch("/api/characters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error || t("chat.importFailed")); return; }
+        const refresh = await fetch("/api/characters");
+        if (refresh.ok) { const list = await refresh.json(); if (Array.isArray(list)) setCharacters(list); }
+        setError("");
+      }
     } catch { setError(t("chat.importFailed")); }
     e.target.value = "";
   }
@@ -537,13 +926,15 @@ export default function ChatPage() {
 
   async function handleRegenerate() {
     if (!selectedChar || loading) return;
-    // Find the last assistant message — we'll add a new swipe to it
     const msgs = [...messages];
     let lastAssistantIdx = -1;
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i].role === "assistant") { lastAssistantIdx = i; break; }
     }
     if (lastAssistantIdx === -1) return;
+
+    const lastMsg = msgs[lastAssistantIdx];
+    const regenCharId = lastMsg.characterId || selectedChar.id;
 
     setLoading(true);
     setThinking(true);
@@ -552,12 +943,12 @@ export default function ChatPage() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ characterId: selectedChar.id, conversationId: activeConversationId, regenerate: true, stream: true, temperature: settings.temperature, maxTokens: settings.maxTokens, persona: settings.persona || undefined }),
+        body: JSON.stringify({ characterId: regenCharId, conversationId: activeConversationId, regenerate: true, stream: true, temperature: settings.temperature, maxTokens: settings.maxTokens, persona: settings.persona || undefined }),
       });
       if (res.status === 401) { setUnauthorized(true); return; }
       if (!res.ok) { const d = await res.json(); setError(d.error || t("chat.sendFailed")); setLoading(false); setThinking(false); return; }
       const reader = res.body?.getReader();
-      if (!reader) { setError("Streaming not supported"); setLoading(false); setThinking(false); return; }
+      if (!reader) { setError(t("chat.streamNotSupported")); setLoading(false); setThinking(false); return; }
 
       const decoder = new TextDecoder();
       let buffer = "";
@@ -569,7 +960,6 @@ export default function ChatPage() {
         if (!thinkingOff) {
           thinkingOff = true;
           setThinking(false);
-          // Add new swipe — append to swipes array, set swipeId to it
           setMessages((prev) => prev.map((m, i) => {
             if (i !== lastAssistantIdx) return m;
             const swipes = JSON.parse(m.swipes || "[]");
@@ -585,7 +975,7 @@ export default function ChatPage() {
           }));
         }
       }
-    } catch { setError("Network error"); }
+    } catch { setError(t("common.networkError")); }
     finally { setLoading(false); setThinking(false); }
   }
 
@@ -597,7 +987,6 @@ export default function ChatPage() {
       let newIdx = m.swipeId + (direction === "right" ? 1 : -1);
       if (newIdx < 0) newIdx = swipes.length - 1;
       if (newIdx >= swipes.length) newIdx = 0;
-      // Persist swipe change
       fetch("/api/chat", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -615,8 +1004,110 @@ export default function ChatPage() {
 
   if (unauthorized) return null;
 
-  // ===== Character List View (WeChat "Chats" page) =====
-  if (!selectedChar) {
+  // Character name lookup for conversation display
+  const charNameMap = new Map(characters.map((c) => [c.id, c.name]));
+
+  function conversationDisplayName(conv: ConversationSummary): string {
+    if (conv.type === "group") {
+      try {
+        const ids: string[] = JSON.parse(conv.characterIds || "[]");
+        const names = ids.map((id) => charNameMap.get(id) || id);
+        return names.join(", ");
+      } catch { return conv.title; }
+    }
+    // Single chat: show the character's name
+    try {
+      const ids: string[] = JSON.parse(conv.characterIds || "[]");
+      if (ids.length === 1) return charNameMap.get(ids[0]) || conv.title;
+    } catch { /* fall through */ }
+    return charNameMap.get(conv.characterId || "") || conv.title;
+  }
+
+  async function handleDeleteFromList(convId: string) {
+    try {
+      const res = await fetch("/api/conversations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: convId }),
+      });
+      if (res.ok) {
+        setAllConversations((prev) => prev.filter((c) => c.id !== convId));
+      }
+    } catch { /* ignore */ }
+  }
+
+  // ===== New Chat Character Selector =====
+  if (showNewChatSelector) {
+    return (
+      <div className="wechat-shell">
+        <div className="wechat-nav">
+          <button className="nav-icon-btn" onClick={() => { setShowNewChatSelector(false); setNewChatSelection([]); }} aria-label="Back">
+            ←
+          </button>
+          <span className="wechat-nav-title">
+            {newChatSelection.length >= 2
+              ? t("group.selectedCount").replace("{n}", String(newChatSelection.length))
+              : t("group.selectCharacters")}
+          </span>
+        </div>
+        <div className="wechat-chat-list">
+          {characters.map((c) => (
+            <div
+              key={c.id}
+              className={`chat-list-item ${newChatSelection.some((gc) => gc.id === c.id) ? "group-selected" : ""}`}
+              onClick={() => toggleNewChatSelect(c)}
+            >
+              <div className="chat-list-avatar" style={{ background: "var(--primary)" }}>
+                {newChatSelection.some((gc) => gc.id === c.id) ? "✓" : c.avatar ? <img src={c.avatar} alt={c.name} style={{ width: "100%", height: "100%", borderRadius: "6px", objectFit: "cover" }} /> : avatarLetter(c.name)}
+              </div>
+              <div className="chat-list-info">
+                <div className="chat-list-name">{c.name}</div>
+                <div className="chat-list-preview">{c.description || t("chat.emptyHint")}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="wechat-list-footer">
+          <button className="wechat-footer-btn" onClick={() => { setShowNewChatSelector(false); setNewChatSelection([]); }}>{t("common.cancel")}</button>
+          {newChatSelection.length >= 1 && (
+            <button className="wechat-footer-btn group-start-btn" onClick={async () => {
+              if (newChatSelection.length >= 2) {
+                await handleStartGroupChat();
+              } else if (newChatSelection.length === 1) {
+                const c = newChatSelection[0];
+                try {
+                  const res = await fetch("/api/conversations", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ characterIds: [c.id], title: c.name }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) { setError(data.error || t("chat.createChatFailed")); return; }
+                  setSelectedChar(c);
+                  setParticipants([c]);
+                  setConversations((prev) => [data, ...prev]);
+                  setAllConversations((prev) => [data, ...prev]);
+                  setActiveConversationId(data.id);
+                  setMessages([]);
+                  setNewChatSelection([]);
+                  setShowNewChatSelector(false);
+                  setDrawerOpen(false);
+                } catch { setError(t("common.networkError")); }
+              }
+            }}>
+              {newChatSelection.length >= 2
+                ? `${t("group.start")} (${newChatSelection.length})`
+                : t("chat.newChat")}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ===== Conversation List View (WeChat "Chats" page) =====
+  if (!activeConversationId) {
+    const charConvs = allConversations;
     return (
       <div className="wechat-shell">
         <div className="wechat-nav">
@@ -628,35 +1119,79 @@ export default function ChatPage() {
           </div>
         </div>
         <div className="wechat-chat-list">
-          {characters.map((c) => (
-            <div key={c.id} className="chat-list-item" onClick={() => handleSelectCharacter(c)}>
-              <div className="chat-list-avatar" style={{ background: "var(--primary)" }}>
-                {avatarLetter(c.name)}
+          {charConvs.length === 0 && (
+            <div className="wx-empty-chat">
+              <div className="wx-empty-icon">💬</div>
+              <div className="wx-empty-title">{t("chat.emptyConversation")}</div>
+            </div>
+          )}
+          {charConvs.map((conv) => (
+            <div
+              key={conv.id}
+              className="chat-list-item"
+              onClick={async () => {
+                setActiveConversationId(conv.id);
+                // Load participants
+                try {
+                  const ids: string[] = JSON.parse(conv.characterIds || "[]");
+                  const charIds = ids.length > 0 ? ids : (conv.characterId ? [conv.characterId] : []);
+                  if (charIds.length > 0) {
+                    const chars = await Promise.all(
+                      charIds.map(async (id) => {
+                        const res = await fetch(`/api/characters?id=${id}`);
+                        return res.ok ? res.json() : null;
+                      })
+                    );
+                    const valid = chars.filter(Boolean) as Character[];
+                    setParticipants(valid);
+                    if (valid.length > 0) setSelectedChar(valid[0]);
+                  }
+                } catch { /* ignore */ }
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (confirm(t("chat.clearChat") + "?")) handleDeleteFromList(conv.id);
+              }}
+            >
+              <div className="chat-list-avatar" style={{ background: conv.type === "group" ? "var(--warning)" : "var(--primary)" }}>
+                {conv.type === "group" ? "👥" : avatarLetter(conversationDisplayName(conv))}
               </div>
               <div className="chat-list-info">
-                <div className="chat-list-name">{c.name}</div>
-                <div className="chat-list-preview">{c.description || c.firstMessage || t("chat.emptyHint")}</div>
-              </div>
-              {role === "admin" && (
-                <div className="chat-list-actions">
-                  <button className="mini-btn" onClick={(e) => { e.stopPropagation(); handleExportChar(c); }} title="Export">↕</button>
-                  <button className="mini-btn" onClick={(e) => { e.stopPropagation(); startEditChar(c); }} title="Edit">✎</button>
+                <div className="chat-list-top">
+                  <span className="chat-list-name">{conversationDisplayName(conv)}</span>
                 </div>
-              )}
+                <div className="chat-list-preview">
+                  {conv.type === "group" && <span className="group-badge">👥 </span>}
+                  {conv._count?.messages != null ? `${conv._count.messages} ${t("chat.messages")}` : conv.title}
+                </div>
+              </div>
+              <div className="chat-list-meta">
+                <span className="chat-list-time">{formatRelativeTime(conv.createdAt, locale)}</span>
+                <button
+                  className="chat-list-del"
+                  onClick={(e) => { e.stopPropagation(); handleDeleteFromList(conv.id); }}
+                  title={t("common.delete")}
+                >✕</button>
+              </div>
             </div>
           ))}
-          {characters.length === 0 && (
-            <div className="wechat-empty">{t("chat.emptyConversation")}</div>
-          )}
         </div>
-        {/* Bottom bar for admin actions */}
+        <div className="wechat-list-footer">
+          <button className="wechat-footer-btn" onClick={() => { setNewChatSelection([]); setShowNewChatSelector(true); }}>
+            + {t("chat.newChat")}
+          </button>
+          <button className="wechat-footer-btn" onClick={() => { setShowSettings(true); }}>
+            &#9881; {t("settings.title")}
+          </button>
+        </div>
         {role === "admin" && (
           <div className="wechat-list-footer">
             <button className="wechat-footer-btn" onClick={() => setShowCreateChar(true)}>+ {t("char.create")}</button>
             <label className="wechat-footer-btn import-label">
               {t("common.import")}
-              <input type="file" accept=".json" className="import-input" onChange={handleImportChar} />
+              <input type="file" accept=".json,.png" className="import-input" onChange={handleImportChar} />
             </label>
+            <button className="wechat-footer-btn" onClick={() => setShowWorldInfo(true)}>{t("world.manage")}</button>
             <button className="wechat-footer-btn" onClick={openAdmin}>{t("admin.users")}</button>
             <button className="wechat-footer-btn" onClick={handleLogout}>{t("common.logout")}</button>
           </div>
@@ -669,181 +1204,65 @@ export default function ChatPage() {
 
         {/* Modals */}
         {showSettings && (
-          <div className="wechat-overlay" onClick={() => setShowSettings(false)}>
-            <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="wechat-modal-header">
-                <span>{t("settings.title")}</span>
-                <button className="wechat-modal-close" onClick={() => setShowSettings(false)}>×</button>
-              </div>
-              <div className="wechat-modal-body">
-                <div className="settings-field">
-                  <label>{t("settings.temperature")}: <strong>{settings.temperature.toFixed(1)}</strong></label>
-                  <input type="range" min="0.1" max="2.0" step="0.1" value={settings.temperature}
-                    onChange={(e) => { const next = { ...settings, temperature: parseFloat(e.target.value) }; setSettings(next); saveSettings(next); }} />
-                </div>
-                <div className="settings-field">
-                  <label>{t("settings.maxTokens")}: <strong>{settings.maxTokens}</strong></label>
-                  <input type="range" min="256" max="4096" step="128" value={settings.maxTokens}
-                    onChange={(e) => { const next = { ...settings, maxTokens: parseInt(e.target.value) }; setSettings(next); saveSettings(next); }} />
-                </div>
-                <div className="settings-field">
-                  <label>{t("settings.persona")}</label>
-                  <textarea className="wechat-textarea" rows={3} value={settings.persona}
-                    placeholder={t("settings.personaHint")}
-                    onChange={(e) => { const next = { ...settings, persona: e.target.value }; setSettings(next); saveSettings(next); }} />
-                </div>
-                <div className="settings-field">
-                  <label>{t("settings.language")}</label>
-                  <select className="wechat-input" value={locale} onChange={(e) => setLocale(e.target.value as Locale)}>
-                    <option value="zh-CN">{t("lang.zhCN")}</option>
-                    <option value="en">{t("lang.en")}</option>
-                  </select>
-                </div>
-                <button className="wechat-btn" onClick={() => { const d = { temperature: 0.8, maxTokens: 1024, persona: "" }; setSettings(d); saveSettings(d); }}>{t("settings.resetDefaults")}</button>
-              </div>
-            </div>
-          </div>
+          <SettingsModal
+            settings={settings}
+            onSettingsChange={(s) => { setSettings(s); saveSettings(s); }}
+            locale={locale}
+            onLocaleChange={setLocale}
+            onClose={() => setShowSettings(false)}
+            t={tf}
+          />
         )}
-
         {showCreateChar && (
-          <div className="wechat-overlay" onClick={() => { setShowCreateChar(false); setEditingCharId(null); }}>
-            <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="wechat-modal-header">
-                <span>{editingCharId ? t("char.editTitle") : t("char.createTitle")}</span>
-                <button className="wechat-modal-close" onClick={() => { setShowCreateChar(false); setEditingCharId(null); }}>×</button>
-              </div>
-              {charError && <div className="wechat-error">{charError}</div>}
-              <form className="wechat-modal-body" onSubmit={handleCreateChar}>
-                <div className="settings-field">
-                  <label>{t("char.id")} *</label>
-                  <input className="wechat-input" value={charForm.id}
-                    onChange={(e) => setCharForm((f) => ({ ...f, id: e.target.value }))}
-                    placeholder="alice" required disabled={!!editingCharId} />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.name")} *</label>
-                  <input className="wechat-input" value={charForm.name}
-                    onChange={(e) => setCharForm((f) => ({ ...f, name: e.target.value }))}
-                    placeholder="Alice" required />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.description")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.description}
-                    onChange={(e) => setCharForm((f) => ({ ...f, description: e.target.value }))}
-                    placeholder="A brief description" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.personality")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.personality}
-                    onChange={(e) => setCharForm((f) => ({ ...f, personality: e.target.value }))}
-                    placeholder="Personality traits" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.scenario")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.scenario}
-                    onChange={(e) => setCharForm((f) => ({ ...f, scenario: e.target.value }))}
-                    placeholder="Conversation scenario" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.firstMes")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.first_mes}
-                    onChange={(e) => setCharForm((f) => ({ ...f, first_mes: e.target.value }))}
-                    placeholder="Opening message" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.mesExample")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.mes_example}
-                    onChange={(e) => setCharForm((f) => ({ ...f, mes_example: e.target.value }))}
-                    placeholder="User: ...&#10;Character: ..." />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.systemPrompt")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.system_prompt}
-                    onChange={(e) => setCharForm((f) => ({ ...f, system_prompt: e.target.value }))}
-                    placeholder="Custom system instructions" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.postHistory")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.post_history_instructions}
-                    onChange={(e) => setCharForm((f) => ({ ...f, post_history_instructions: e.target.value }))}
-                    placeholder="Instructions injected after chat history" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.altGreetings")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.alternate_greetings}
-                    onChange={(e) => setCharForm((f) => ({ ...f, alternate_greetings: e.target.value }))}
-                    placeholder="Alt greeting 1&#10;Alt greeting 2" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.creator")}</label>
-                  <input className="wechat-input" value={charForm.creator}
-                    onChange={(e) => setCharForm((f) => ({ ...f, creator: e.target.value }))}
-                    placeholder="Character creator name" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.version")}</label>
-                  <input className="wechat-input" value={charForm.character_version}
-                    onChange={(e) => setCharForm((f) => ({ ...f, character_version: e.target.value }))}
-                    placeholder="1.0" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.creatorNotes")}</label>
-                  <textarea className="wechat-textarea" rows={2} value={charForm.creator_notes}
-                    onChange={(e) => setCharForm((f) => ({ ...f, creator_notes: e.target.value }))}
-                    placeholder="Display-only notes for the creator" />
-                </div>
-                <div className="settings-field">
-                  <label>{t("char.tags")}</label>
-                  <input className="wechat-input" value={charForm.tags}
-                    onChange={(e) => setCharForm((f) => ({ ...f, tags: e.target.value }))}
-                    placeholder="friend, fantasy, slice-of-life" />
-                </div>
-                <button className="wechat-btn wechat-btn-primary" type="submit" disabled={charCreating}>
-                  {charCreating ? t("char.saving") : editingCharId ? t("char.updateBtn") : t("char.createBtn")}
-                </button>
-              </form>
-            </div>
-          </div>
+          <CharacterFormModal
+            editingCharId={editingCharId}
+            charForm={charForm}
+            onCharFormChange={setCharForm}
+            onSubmit={handleCreateChar}
+            onClose={() => { setShowCreateChar(false); setEditingCharId(null); }}
+            charError={charError}
+            charCreating={charCreating}
+            t={tf}
+          />
         )}
-
         {showAdmin && (
-          <div className="wechat-overlay" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>
-            <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="wechat-modal-header">
-                <span>{t("admin.title")}</span>
-                <button className="wechat-modal-close" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>×</button>
-              </div>
-              {adminError && <div className="wechat-error">{adminError}</div>}
-              {adminLoading ? <p className="wechat-loading">{t("common.loading")}</p> : (
-                <div className="wechat-user-list">
-                  {adminUsers.map((u) => (
-                    <div key={u.id} className="wechat-user-row">
-                      <div>
-                        <div className="user-name">{u.username}</div>
-                        <div className="user-meta">{u.role} · {new Date(u.createdAt).toLocaleDateString()}</div>
-                      </div>
-                      <div>
-                        {deleteConfirm === u.id ? (
-                          <span className="confirm-group">
-                            <button className="mini-btn danger" onClick={() => handleDeleteUser(u.id)}>{t("common.confirm")}</button>
-                            <button className="mini-btn" onClick={() => setDeleteConfirm(null)}>{t("common.cancel")}</button>
-                          </span>
-                        ) : (
-                          <button className="mini-btn danger-outline" onClick={() => setDeleteConfirm(u.id)} disabled={u.id === "demo"}>{t("common.delete")}</button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <AdminModal
+            adminUsers={adminUsers}
+            adminLoading={adminLoading}
+            adminError={adminError}
+            deleteConfirm={deleteConfirm}
+            onDeleteUser={handleDeleteUser}
+            onSetDeleteConfirm={setDeleteConfirm}
+            onClose={() => setShowAdmin(false)}
+            t={tf}
+          />
+        )}
+        {showWorldInfo && (
+          <WorldInfoModal
+            onClose={() => setShowWorldInfo(false)}
+            t={tf}
+          />
         )}
       </div>
     );
   }
 
   // ===== Chat View (WeChat chat page) =====
+  if (!selectedChar) {
+    return (
+      <div className="wechat-shell">
+        <div className="wechat-nav">
+          <button className="nav-icon-btn" onClick={handleBack} aria-label="Back">←</button>
+          <span className="wechat-nav-title">{t("chat.emptyTitle")}</span>
+        </div>
+        <div className="wx-empty-chat">
+          <div className="wx-empty-icon">💬</div>
+          <div className="wx-empty-title">{t("chat.emptyHint")}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="wechat-shell">
       {/* Top nav bar */}
@@ -851,7 +1270,11 @@ export default function ChatPage() {
         <button className="nav-icon-btn" onClick={handleBack} aria-label="Back">
           ←
         </button>
-        <span className="wechat-nav-title">{selectedChar.name}</span>
+        <span className="wechat-nav-title">
+          {isGroupChat
+            ? `Group: ${participants.map((c) => c.name).join(", ")}`
+            : selectedChar.name}
+        </span>
         <button className="nav-icon-btn" onClick={() => { setShowSearch(!showSearch); setSearchQuery(""); }} aria-label="Search">
           {showSearch ? "✕" : "🔍"}
         </button>
@@ -867,8 +1290,10 @@ export default function ChatPage() {
               <button onClick={() => { setShowCharInfo(true); setShowMoreMenu(false); }}>{t("chat.characterInfo")}</button>
               <button onClick={() => { setShowSettings(true); setShowMoreMenu(false); }}>{t("settings.title")}</button>
               <button onClick={toggleTheme}>{theme === "light" ? t("settings.themeDark") : t("settings.themeLight")}</button>
+              {role === "admin" && <button onClick={() => { setShowWorldInfo(true); setShowMoreMenu(false); }}>{t("world.manage")}</button>}
               {role === "admin" && <button onClick={() => { startEditChar(selectedChar); }}>{t("char.edit")}</button>}
-              <button onClick={handleClearChat} disabled={clearLoading || messages.length === 0}>
+              <button onClick={() => { setShowPromptDebug(true); setShowMoreMenu(false); }}>{t("promptDebug.show")}</button>
+              <button onClick={handleDeleteConversation} disabled={clearLoading || !activeConversationId}>
                 {clearLoading ? t("common.loading") : t("chat.clearChat")}
               </button>
               <button onClick={handleExportJsonl} disabled={messages.length === 0}>{t("common.export")} JSONL</button>
@@ -899,19 +1324,72 @@ export default function ChatPage() {
         </div>
       )}
 
+      {/* Offline banner */}
+      {!isOnline && (
+        <div className="offline-banner">You are offline — messages will send when back online</div>
+      )}
+
+      {/* Install banner */}
+      {showInstallBanner && (
+        <div className="pwa-install-banner">
+          <span className="pwa-install-text">Add to Home Screen for quick access</span>
+          <div className="pwa-install-actions">
+            <button className="pwa-install-btn" onClick={handleInstall}>Install</button>
+            <button className="pwa-install-dismiss" onClick={() => setShowInstallBanner(false)}>✕</button>
+          </div>
+        </div>
+      )}
+
+      {/* iOS install hint */}
+      {showIOSHint && (
+        <div className="pwa-install-banner">
+          <span className="pwa-install-text">Tap Share &rarr; &ldquo;Add to Home Screen&rdquo; to install</span>
+          <div className="pwa-install-actions">
+            <button className="pwa-install-dismiss" onClick={dismissIOSHint}>✕</button>
+          </div>
+        </div>
+      )}
+
       {/* Message area */}
       <div className="wechat-messages">
         {error && <div className="wechat-error-banner">{error}</div>}
+        {messages.length === 0 && !thinking && (
+          <div className="wx-empty-chat">
+            <div className="wx-empty-icon">💬</div>
+            <div className="wx-empty-title">
+              {isGroupChat ? t("group.selectCharacters") : t("chat.emptyMessages")}
+            </div>
+          </div>
+        )}
         {messages
           .filter((m) => !searchQuery || m.content.toLowerCase().includes(searchQuery.toLowerCase()))
           .map((m, i, arr) => (
-          <div key={m.id} className={`wx-msg ${m.role === "user" ? "wx-msg-self" : ""}`}>
-            {m.role === "assistant" && (
-              <div className="wx-avatar" style={{ background: "var(--primary)" }}>
-                {avatarLetter(selectedChar.name)}
+          <div key={m.id}>
+            {(i === 0 || shouldShowTimeDivider(arr[i - 1].createdAt, m.createdAt)) && (
+              <div className="wx-time-divider">
+                <span>{formatMessageTime(m.createdAt, locale)}</span>
               </div>
             )}
+            <div className={`wx-msg ${m.role === "user" ? "wx-msg-self" : ""}`}>
+            {m.role === "assistant" && (
+              (() => {
+                const charAvatar = m.characterName
+                  ? (characters.find((c) => c.name === m.characterName) || selectedChar)?.avatar
+                  : selectedChar.avatar;
+                if (charAvatar) {
+                  return <img src={charAvatar} alt="" className="wx-avatar" style={{ objectFit: "cover" }} />;
+                }
+                return (
+                  <div className="wx-avatar" style={{ background: "var(--primary)" }}>
+                    {m.characterName ? avatarLetter(m.characterName) : avatarLetter(selectedChar.name)}
+                  </div>
+                );
+              })()
+            )}
             <div className="wx-bubble-wrapper">
+              {isGroupChat && m.role === "assistant" && m.characterName && (
+                <div className="wx-sender-name">{m.characterName}</div>
+              )}
               <div className={`wx-bubble ${m.role === "user" ? "wx-bubble-self" : ""}`}>
                 <ReactMarkdown>{m.content}</ReactMarkdown>
               </div>
@@ -936,12 +1414,17 @@ export default function ChatPage() {
               </div>
             </div>
           </div>
+          </div>
         ))}
         {thinking && (
           <div className="wx-msg">
-            <div className="wx-avatar" style={{ background: "var(--primary)" }}>
-              {avatarLetter(selectedChar.name)}
-            </div>
+            {selectedChar.avatar ? (
+              <img src={selectedChar.avatar} alt="" className="wx-avatar" style={{ objectFit: "cover" }} />
+            ) : (
+              <div className="wx-avatar" style={{ background: "var(--primary)" }}>
+                {avatarLetter(selectedChar.name)}
+              </div>
+            )}
             <div className="wx-bubble wx-typing">
               <span className="loading-dots">{t("chat.thinking")}</span>
             </div>
@@ -1022,7 +1505,7 @@ export default function ChatPage() {
                     onClick={() => handleSelectCharacter(c)}
                   >
                     <div className="drawer-char-avatar" style={{ background: "var(--primary)" }}>
-                      {avatarLetter(c.name)}
+                      {c.avatar ? <img src={c.avatar} alt={c.name} className="drawer-char-avatar" style={{ objectFit: "cover" }} /> : avatarLetter(c.name)}
                     </div>
                     <div className="drawer-char-info">
                       <div className="drawer-char-name">{c.name}</div>
@@ -1041,7 +1524,7 @@ export default function ChatPage() {
                         <div
                           key={conv.id}
                           className={`drawer-conv-item ${conv.id === activeConversationId ? "active" : ""}`}
-                          onClick={() => renamingConvId !== conv.id && handleSelectConversation(conv.id)}
+                          onClick={() => renamingConvId !== conv.id && handleSelectConversation(conv)}
                         >
                           {renamingConvId === conv.id ? (
                             <input
@@ -1054,7 +1537,10 @@ export default function ChatPage() {
                               onClick={(e) => e.stopPropagation()}
                             />
                           ) : (
-                            <span onDoubleClick={() => startRename(conv)} title="Double-click to rename">{conv.title}</span>
+                            <span onDoubleClick={() => startRename(conv)} title="Double-click to rename">
+                              {conv.type === "group" && <span className="group-badge">👥 </span>}
+                              {conv.title}
+                            </span>
                           )}
                           <span className="drawer-conv-time">{new Date(conv.createdAt).toLocaleDateString()}{(conv._count?.messages ?? 0) > 0 && ` · ${conv._count?.messages}`}</span>
                         </div>
@@ -1070,7 +1556,7 @@ export default function ChatPage() {
                 <button className="wechat-footer-btn" onClick={() => setShowCreateChar(true)}>+ {t("char.create")}</button>
                 <label className="wechat-footer-btn import-label">
                   Import
-                  <input type="file" accept=".json" className="import-input" onChange={handleImportChar} />
+                  <input type="file" accept=".json,.png" className="import-input" onChange={handleImportChar} />
                 </label>
                 <button className="wechat-footer-btn" onClick={openAdmin}>{t("admin.users")}</button>
               </div>
@@ -1079,7 +1565,7 @@ export default function ChatPage() {
         </>
       )}
 
-      {/* Modals (reused from character list view) */}
+      {/* Modals */}
       {showCharInfo && selectedChar && (
         <div className="wechat-overlay" onClick={() => setShowCharInfo(false)}>
           <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
@@ -1103,175 +1589,57 @@ export default function ChatPage() {
       )}
 
       {showSettings && (
-        <div className="wechat-overlay" onClick={() => setShowSettings(false)}>
-          <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="wechat-modal-header">
-              <span>{t("settings.title")}</span>
-              <button className="wechat-modal-close" onClick={() => setShowSettings(false)}>×</button>
-            </div>
-            <div className="wechat-modal-body">
-              <div className="settings-field">
-                <label>{t("settings.temperature")}: <strong>{settings.temperature.toFixed(1)}</strong></label>
-                <input type="range" min="0.1" max="2.0" step="0.1" value={settings.temperature}
-                  onChange={(e) => { const next = { ...settings, temperature: parseFloat(e.target.value) }; setSettings(next); saveSettings(next); }} />
-              </div>
-              <div className="settings-field">
-                <label>{t("settings.maxTokens")}: <strong>{settings.maxTokens}</strong></label>
-                <input type="range" min="256" max="4096" step="128" value={settings.maxTokens}
-                  onChange={(e) => { const next = { ...settings, maxTokens: parseInt(e.target.value) }; setSettings(next); saveSettings(next); }} />
-              </div>
-              <div className="settings-field">
-                <label>{t("settings.persona")}</label>
-                <textarea className="wechat-textarea" rows={3} value={settings.persona}
-                  placeholder={t("settings.personaHint")}
-                  onChange={(e) => { const next = { ...settings, persona: e.target.value }; setSettings(next); saveSettings(next); }} />
-              </div>
-              <div className="settings-field">
-                <label>{t("settings.language")}</label>
-                <select className="wechat-input" value={locale} onChange={(e) => setLocale(e.target.value as Locale)}>
-                  <option value="zh-CN">{t("lang.zhCN")}</option>
-                  <option value="en">{t("lang.en")}</option>
-                </select>
-              </div>
-              <button className="wechat-btn wechat-btn-primary" onClick={() => { const d = { temperature: 0.8, maxTokens: 1024, persona: "" }; setSettings(d); saveSettings(d); }}>{t("settings.resetDefaults")}</button>
-            </div>
-          </div>
-        </div>
+        <SettingsModal
+          settings={settings}
+          onSettingsChange={(s) => { setSettings(s); saveSettings(s); }}
+          locale={locale}
+          onLocaleChange={setLocale}
+          onClose={() => setShowSettings(false)}
+          t={tf}
+        />
       )}
 
       {showCreateChar && (
-        <div className="wechat-overlay" onClick={() => { setShowCreateChar(false); setEditingCharId(null); }}>
-          <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="wechat-modal-header">
-              <span>{editingCharId ? t("char.editTitle") : t("char.createTitle")}</span>
-              <button className="wechat-modal-close" onClick={() => { setShowCreateChar(false); setEditingCharId(null); }}>×</button>
-            </div>
-            {charError && <div className="wechat-error">{charError}</div>}
-            <form className="wechat-modal-body" onSubmit={handleCreateChar}>
-              <div className="settings-field">
-                <label>ID *</label>
-                <input className="wechat-input" value={charForm.id}
-                  onChange={(e) => setCharForm((f) => ({ ...f, id: e.target.value }))}
-                  placeholder="alice" required disabled={!!editingCharId} />
-              </div>
-              <div className="settings-field">
-                <label>Name *</label>
-                <input className="wechat-input" value={charForm.name}
-                  onChange={(e) => setCharForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Alice" required />
-              </div>
-              <div className="settings-field">
-                <label>Description</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.description}
-                  onChange={(e) => setCharForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder="A brief description" />
-              </div>
-              <div className="settings-field">
-                <label>Personality</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.personality}
-                  onChange={(e) => setCharForm((f) => ({ ...f, personality: e.target.value }))}
-                  placeholder="Personality traits" />
-              </div>
-              <div className="settings-field">
-                <label>Scenario</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.scenario}
-                  onChange={(e) => setCharForm((f) => ({ ...f, scenario: e.target.value }))}
-                  placeholder="Conversation scenario" />
-              </div>
-              <div className="settings-field">
-                <label>First Message</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.first_mes}
-                  onChange={(e) => setCharForm((f) => ({ ...f, first_mes: e.target.value }))}
-                  placeholder="Opening message" />
-              </div>
-              <div className="settings-field">
-                <label>Example Dialogue</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.mes_example}
-                  onChange={(e) => setCharForm((f) => ({ ...f, mes_example: e.target.value }))}
-                  placeholder="User: ...&#10;Character: ..." />
-              </div>
-              <div className="settings-field">
-                <label>System Prompt</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.system_prompt}
-                  onChange={(e) => setCharForm((f) => ({ ...f, system_prompt: e.target.value }))}
-                  placeholder="Custom system instructions" />
-              </div>
-              <div className="settings-field">
-                <label>Post-History Instructions</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.post_history_instructions}
-                  onChange={(e) => setCharForm((f) => ({ ...f, post_history_instructions: e.target.value }))}
-                  placeholder="Instructions injected after chat history" />
-              </div>
-              <div className="settings-field">
-                <label>Alternate Greetings (one per line)</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.alternate_greetings}
-                  onChange={(e) => setCharForm((f) => ({ ...f, alternate_greetings: e.target.value }))}
-                  placeholder="Alt greeting 1&#10;Alt greeting 2" />
-              </div>
-              <div className="settings-field">
-                <label>Creator</label>
-                <input className="wechat-input" value={charForm.creator}
-                  onChange={(e) => setCharForm((f) => ({ ...f, creator: e.target.value }))}
-                  placeholder="Character creator name" />
-              </div>
-              <div className="settings-field">
-                <label>Version</label>
-                <input className="wechat-input" value={charForm.character_version}
-                  onChange={(e) => setCharForm((f) => ({ ...f, character_version: e.target.value }))}
-                  placeholder="1.0" />
-              </div>
-              <div className="settings-field">
-                <label>Creator Notes</label>
-                <textarea className="wechat-textarea" rows={2} value={charForm.creator_notes}
-                  onChange={(e) => setCharForm((f) => ({ ...f, creator_notes: e.target.value }))}
-                  placeholder="Display-only notes for the creator" />
-              </div>
-              <div className="settings-field">
-                <label>Tags (comma-separated)</label>
-                <input className="wechat-input" value={charForm.tags}
-                  onChange={(e) => setCharForm((f) => ({ ...f, tags: e.target.value }))}
-                  placeholder="friend, fantasy, slice-of-life" />
-              </div>
-              <button className="wechat-btn wechat-btn-primary" type="submit" disabled={charCreating}>
-                {charCreating ? t("char.saving") : editingCharId ? t("char.updateBtn") : t("char.createBtn")}
-              </button>
-            </form>
-          </div>
-        </div>
+        <CharacterFormModal
+          editingCharId={editingCharId}
+          charForm={charForm}
+          onCharFormChange={setCharForm}
+          onSubmit={handleCreateChar}
+          onClose={() => { setShowCreateChar(false); setEditingCharId(null); }}
+          charError={charError}
+          charCreating={charCreating}
+          t={tf}
+        />
       )}
 
       {showAdmin && (
-        <div className="wechat-overlay" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>
-          <div className="wechat-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="wechat-modal-header">
-              <span>{t("admin.title")}</span>
-              <button className="wechat-modal-close" onClick={() => { setShowAdmin(false); setDeleteConfirm(null); }}>×</button>
-            </div>
-            {adminError && <div className="wechat-error">{adminError}</div>}
-            {adminLoading ? <p className="wechat-loading">{t("common.loading")}</p> : (
-              <div className="wechat-user-list">
-                {adminUsers.map((u) => (
-                  <div key={u.id} className="wechat-user-row">
-                    <div>
-                      <div className="user-name">{u.username}</div>
-                      <div className="user-meta">{u.role} · {new Date(u.createdAt).toLocaleDateString()}</div>
-                    </div>
-                    <div>
-                      {deleteConfirm === u.id ? (
-                        <span className="confirm-group">
-                          <button className="mini-btn danger" onClick={() => handleDeleteUser(u.id)}>{t("common.confirm")}</button>
-                          <button className="mini-btn" onClick={() => setDeleteConfirm(null)}>{t("common.cancel")}</button>
-                        </span>
-                      ) : (
-                        <button className="mini-btn danger-outline" onClick={() => setDeleteConfirm(u.id)} disabled={u.id === "demo"}>{t("common.delete")}</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <AdminModal
+          adminUsers={adminUsers}
+          adminLoading={adminLoading}
+          adminError={adminError}
+          deleteConfirm={deleteConfirm}
+          onDeleteUser={handleDeleteUser}
+          onSetDeleteConfirm={setDeleteConfirm}
+          onClose={() => setShowAdmin(false)}
+          t={tf}
+        />
+      )}
+
+      {showWorldInfo && (
+        <WorldInfoModal
+          onClose={() => setShowWorldInfo(false)}
+          t={tf}
+        />
+      )}
+
+      {showPromptDebug && (
+        <PromptDebugModal
+          characterId={selectedChar.id}
+          conversationId={activeConversationId}
+          persona={settings.persona}
+          onClose={() => setShowPromptDebug(false)}
+          t={tf}
+        />
       )}
     </div>
   );
